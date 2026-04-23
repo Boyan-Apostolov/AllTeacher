@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "AllTeacher",
+    "slug": "allteacher",
+    "scheme": "allteacher",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.allteacher.app"
+    },
+    "android": {
+      "package": "com.allteacher.app"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8000"
+    }
+  }
+}

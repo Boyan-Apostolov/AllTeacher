@@ -1,0 +1,19 @@
+.DS_Store
+*.log
+
+# Backend
+backend/.venv/
+backend/venv/
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.env
+backend/.pytest_cache/
+
+# iOS / Expo
+ios/node_modules/
+ios/.expo/
+ios/dist/
+ios/web-build/
+ios/.env
+ios/.env.local

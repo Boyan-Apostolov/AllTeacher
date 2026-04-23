@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: .
+    container_name: allteacher-backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    labels:
+      # Traefik labels for your home VPS
+      - "traefik.enable=true"
+      - "traefik.http.routers.allteacher.rule=Host(`api.allteacher.yourdomain.com`)"
+      - "traefik.http.routers.allteacher.entrypoints=websecure"
+      - "traefik.http.routers.allteacher.tls.certresolver=letsencrypt"
+      - "traefik.http.services.allteacher.loadbalancer.server.port=8000"
