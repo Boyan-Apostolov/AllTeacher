@@ -166,6 +166,20 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 ```
 
+### Migrations
+
+After the initial schema above, run any migrations in `backend/db/migrations/` in order. They're idempotent (`add column if not exists`), safe to re-run.
+
+Currently:
+
+- `002_curriculum_assessment.sql` — adds Assessor output columns (`goal`, `native_language`, `target_language`, `level`, `learning_style`, `time_budget_mins_per_week`, `assessment_json`, `assessor_status`) to `curricula`.
+
+For each file: open **SQL Editor → New query**, paste the contents, click **Run**.
+
+### JWT signing keys (recommended)
+
+The legacy shared **JWT Secret** (HS256) still works, but Supabase now prefers **asymmetric JWT signing keys** (ES256/RS256). In **Project Settings → API → JWT Settings**, promote an asymmetric key to "In use". The backend auto-detects the algorithm and verifies via the project's JWKS endpoint — no extra config needed as long as `SUPABASE_URL` is set.
+
 ---
 
 ## 3. Get an OpenAI API key
@@ -259,11 +273,17 @@ iOS Simulator (Expo) ──/health──▶ Flask (:8000) ──▶ Config check
                         ◀──── { status: "ok", configured: {...} }
 ```
 
+### What to try
+
+- Sign up / log in from the iOS app — the **Signed in as …** line + the green **/auth/me** card prove the Supabase JWT round-trips to Flask.
+- Tap **Start new curriculum**, type any goal in any language. The Assessor asks ≤ 8 MCQs in your native language and ends with a structured summary (domain / level / learning style / time budget / target language).
+- Back on Home, the curriculum appears in **Your curricula** with its status.
+
 Next, in roughly MVP order:
 
-1. Supabase Auth — email/password signup/login in `ios/app/(auth)/` that writes to `public.users`.
-2. Orchestrator skeleton in `backend/app/agents/orchestrator.py`.
-3. Assessor + Planner agents — first adaptive quiz, first curriculum plan.
+1. ~~Supabase Auth — email/password signup/login in `ios/app/(auth)/` that writes to `public.users`.~~ ✅
+2. ~~Assessor agent — first adaptive quiz.~~ ✅
+3. Planner agent — turn the Assessor summary into a week-by-week plan in `curriculum_weeks`.
 4. Exercise Writer + Evaluator — sessions screen with streaming responses via SSE.
 5. Tracker + Adapter — progress dashboard.
 6. RevenueCat → tier enforcement.
