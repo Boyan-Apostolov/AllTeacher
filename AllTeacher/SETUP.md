@@ -175,6 +175,7 @@ Currently:
 - `002_curriculum_assessment.sql` — adds Assessor output columns (`goal`, `native_language`, `target_language`, `level`, `learning_style`, `time_budget_mins_per_week`, `assessment_json`, `assessor_status`) to `curricula`.
 - `003_time_budget_per_day.sql` — renames `time_budget_mins_per_week` → `time_budget_mins_per_day` (the Assessor now asks per-day, not per-week).
 - `004_planner.sql` — adds `plan_json` (top-level overview: title, summary, phases, total_weeks) and `planner_status` to `curricula`. Per-week detail goes into `curriculum_weeks.plan_json`.
+- `005_exercises.sql` — extends `exercises` with `module_index`, `status` enum (`pending` / `submitted` / `evaluated` / `skipped`), `submission_json`, `feedback_json`, `evaluated_at`, plus indexes on `(curriculum_id, status)` and `(week_id, status)`. Used by the Exercise Writer + Evaluator pipeline.
 
 For each file: open **SQL Editor → New query**, paste the contents, click **Run**.
 
@@ -252,6 +253,8 @@ npm install
 cp .env.example .env
 ```
 
+This installs everything in `package.json`, including `expo-linear-gradient` (used by the redesigned UI for hero / button / flashcard gradients). The `Gradient` component falls back to a solid color if it isn't installed yet, so the app still boots without it — but `npm install` is the supported path.
+
 `.env` for the simulator is fine as-is (`EXPO_PUBLIC_API_URL=http://localhost:8000`). Also paste in your Supabase URL and anon key from step 2.
 
 Boot it:
@@ -277,7 +280,7 @@ iOS Simulator (Expo) ──/health──▶ Flask (:8000) ──▶ Config check
 
 ### Architecture: master Orchestrator
 
-All agent calls go through `backend/app/agents/orchestrator.py`. Routes are thin — they translate HTTP into orchestrator intents (`start_curriculum`, `submit_assessor_answer`, `generate_plan`, …) and translate orchestrator results / errors back into JSON. Subagents (`assessor.py`, `planner.py`, future `evaluator.py`, `tracker.py`, `adapter.py`) stay pure: structured input → structured output, no DB or HTTP.
+All agent calls go through `backend/app/agents/orchestrator.py`. Routes are thin — they translate HTTP into orchestrator intents (`start_curriculum`, `submit_assessor_answer`, `generate_plan`, `generate_exercises`, `submit_exercise`, …) and translate orchestrator results / errors back into JSON. Subagents (`assessor.py`, `planner.py`, `exercise_writer.py`, `evaluator.py`, future `tracker.py`, `adapter.py`) stay pure: structured input → structured output, no DB or HTTP.
 
 ```
 iOS  ──HTTP──▶  Flask route  ──intent──▶  Orchestrator  ──▶  Subagent (Assessor / Planner / …)
@@ -294,13 +297,23 @@ Add a new subagent by dropping a new module under `app/agents/` and wiring it in
 - Tap **Start new curriculum**, type any goal in any language. The Assessor asks 8–10 MCQs in your native language and ends with a structured summary (domain / level / learning style / time per day / target language).
 - After the assessment, tap **Generate my plan**. The Planner returns a week-by-week curriculum (title, summary, phases, weeks with modules / objective / milestone / daily minutes), persisted to `curricula.plan_json` + `curriculum_weeks`.
 - Back on Home, the curriculum row shows **Plan ready** and reopens straight into the plan view.
+- On any week card in the plan view, tap **Start session →**. The Exercise Writer generates a small batch of exercises (mix of multiple-choice / flashcards / short-answer / writing prompts) tailored to that week's modules and your level. Submit each one — the Evaluator scores it and gives feedback in your native language. End-of-session shows your average score.
+
+### UI redesign + prompt trim (2026-04-26)
+
+- **Design tokens** live in `ios/lib/theme.ts` — colors, per-exercise-type accents (`typeAccent`), radii, spacing, type, shadow. Every screen pulls from this one source so the look stays coherent.
+- **Gradient component** `ios/components/Gradient.tsx` wraps `expo-linear-gradient` and falls back to a solid View if the package isn't installed yet.
+- **Screens redesigned**: Home, login, signup, new curriculum, curriculum detail (assessor / summary / plan), exercise session. Hero gradients + soft cards + pill CTAs throughout.
+- **Flashcards** now flip with an animated 3D rotation using React Native's `Animated` API — gradient front face (turquoise → cyan), light back face, with hard / medium / easy buttons that gradient when active.
+- **Agent prompts trimmed** (`backend/app/agents/{assessor,planner,exercise_writer,evaluator}.py`) — system prompts are now ~10–17 lines each (down ~75–85%). The structured-output JSON schemas enforce shape, so prompts only carry the rules the schema can't enforce: language behaviour, exercise/scoring vocabulary, quality bar, and dedup constraints. Per-call `reminder` system messages dropped.
 
 Next, in roughly MVP order:
 
 1. ~~Supabase Auth — email/password signup/login in `ios/app/(auth)/` that writes to `public.users`.~~ ✅
 2. ~~Assessor agent — adaptive quiz, structured summary in native language.~~ ✅
 3. ~~Planner agent — turn the Assessor summary into a week-by-week plan in `curriculum_weeks`, dispatched by the master Orchestrator.~~ ✅
-4. Exercise Writer + Evaluator — sessions screen with streaming responses via SSE.
-5. Tracker + Adapter — progress dashboard.
-6. RevenueCat → tier enforcement.
-7. TestFlight submission.
+4. ~~Exercise Writer + Evaluator — per-week session: generate exercises, render typed UI, submit, get scored feedback.~~ ✅
+5. Tracker + Adapter — progress dashboard, weak-area accumulation, re-plan upcoming weeks.
+6. Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.
+7. RevenueCat → tier enforcement.
+8. TestFlight submission.

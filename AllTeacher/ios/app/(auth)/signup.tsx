@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -7,11 +8,12 @@ import {
   Text,
   TextInput,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 import { useAuth } from "@/lib/auth";
+import { Gradient } from "@/components/Gradient";
+import { colors, radii, shadow, spacing, type } from "@/lib/theme";
 
 export default function Signup() {
   const { signUp } = useAuth();
@@ -20,6 +22,7 @@ export default function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [focused, setFocused] = useState<"email" | "password" | null>(null);
 
   const onSubmit = async () => {
     setError(null);
@@ -27,9 +30,9 @@ export default function Signup() {
     setSubmitting(true);
     try {
       await signUp(email.trim(), password);
-      // If Supabase email confirmation is OFF, session is set and root
-      // layout redirects. If it's ON, user must confirm via email first.
-      setInfo("Account created. If email confirmation is enabled, check your inbox.");
+      setInfo(
+        "Account created. If email confirmation is enabled, check your inbox.",
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -37,89 +40,230 @@ export default function Signup() {
     }
   };
 
+  const canSubmit = !!email && password.length >= 6 && !submitting;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.flex}
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Create account</Text>
-          <Text style={styles.subtitle}>Start learning anything, in any language</Text>
-
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password (min 6 chars)"
-            secureTextEntry
-            autoComplete="new-password"
-            textContentType="newPassword"
-            value={password}
-            onChangeText={setPassword}
-          />
-
-          {error && <Text style={styles.error}>{error}</Text>}
-          {info && <Text style={styles.info}>{info}</Text>}
-
-          <Pressable
-            style={[styles.button, submitting && styles.buttonDisabled]}
-            disabled={submitting || !email || password.length < 6}
-            onPress={onSubmit}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Sign up</Text>
-            )}
-          </Pressable>
-
-          <Link href="/(auth)/login" style={styles.footerLink}>
-            <Text style={styles.footer}>
-              Have an account? <Text style={styles.footerAccent}>Sign in</Text>
+    <View style={styles.root}>
+      <Gradient
+        from={colors.accent}
+        via={colors.brand}
+        to="#5fb8ff"
+        angle={200}
+        style={styles.bgGradient}
+      />
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.flex}
+        >
+          <View style={styles.hero}>
+            <Text style={styles.eyebrow}>AllTeacher</Text>
+            <Text style={styles.heroTitle}>Learn{"\n"}anything 🌱</Text>
+            <Text style={styles.heroSub}>
+              Tell us a goal — we'll build the path.
             </Text>
-          </Link>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Create account</Text>
+            <Text style={styles.cardSub}>
+              No credit card. One curriculum on the free plan.
+            </Text>
+
+            <View style={styles.fields}>
+              <Field
+                label="Email"
+                placeholder="you@example.com"
+                value={email}
+                onChangeText={setEmail}
+                focused={focused === "email"}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+              />
+              <Field
+                label="Password"
+                placeholder="At least 6 characters"
+                value={password}
+                onChangeText={setPassword}
+                focused={focused === "password"}
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                secureTextEntry
+                autoComplete="new-password"
+                textContentType="newPassword"
+              />
+            </View>
+
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+            {info && (
+              <View style={styles.infoBox}>
+                <Text style={styles.infoText}>{info}</Text>
+              </View>
+            )}
+
+            <Pressable
+              disabled={!canSubmit}
+              onPress={onSubmit}
+              style={({ pressed }) => [
+                styles.cta,
+                !canSubmit && styles.ctaDisabled,
+                pressed && canSubmit && styles.ctaPressed,
+              ]}
+            >
+              <Gradient
+                from={colors.brand}
+                to={colors.accent}
+                angle={135}
+                style={styles.ctaGradient}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textOnDark} />
+                ) : (
+                  <Text style={styles.ctaText}>Create account →</Text>
+                )}
+              </Gradient>
+            </Pressable>
+
+            <Link href="/(auth)/login" asChild>
+              <Pressable style={styles.footerLink}>
+                <Text style={styles.footer}>
+                  Already have one?{" "}
+                  <Text style={styles.footerAccent}>Sign in</Text>
+                </Text>
+              </Pressable>
+            </Link>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  focused,
+  ...rest
+}: React.ComponentProps<typeof TextInput> & { label: string; focused: boolean }) {
+  return (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        {...rest}
+        placeholderTextColor={colors.textFaint}
+        style={[styles.input, focused && styles.inputFocused]}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  root: { flex: 1, backgroundColor: colors.bg },
+  bgGradient: { ...StyleSheet.absoluteFillObject, height: 360 },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { flex: 1, padding: 24, justifyContent: "center", gap: 12 },
-  title: { fontSize: 32, fontWeight: "700" },
-  subtitle: { fontSize: 15, color: "#666", marginBottom: 16 },
-  input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e5e5",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+
+  hero: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+  },
+  eyebrow: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  heroTitle: {
+    fontSize: 40,
+    fontWeight: "900",
+    color: colors.textOnDark,
+    letterSpacing: -0.8,
+    lineHeight: 44,
+  },
+  heroSub: {
     fontSize: 16,
+    color: "rgba(255,255,255,0.9)",
+    marginTop: spacing.md,
   },
-  error: { color: "#c0392b", fontSize: 14 },
-  info: { color: "#2d6a4f", fontSize: 14 },
-  button: {
-    backgroundColor: "#111",
-    borderRadius: 10,
+
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: "auto",
+    marginBottom: spacing.lg,
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    ...shadow.raised,
+  },
+  cardTitle: { ...type.h1 },
+  cardSub: { ...type.bodyMuted, marginTop: spacing.xs },
+  fields: { gap: spacing.md, marginTop: spacing.lg },
+
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  input: {
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
     paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
+    fontSize: 16,
+    color: colors.text,
   },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  footerLink: { marginTop: 16, alignSelf: "center" },
-  footer: { fontSize: 14, color: "#666" },
-  footerAccent: { color: "#111", fontWeight: "600" },
+  inputFocused: {
+    borderColor: colors.brand,
+    backgroundColor: colors.surface,
+  },
+
+  errorBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radii.md,
+  },
+  errorText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
+  infoBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.successSoft,
+    borderRadius: radii.md,
+  },
+  infoText: { color: colors.success, fontSize: 14, fontWeight: "600" },
+
+  cta: {
+    marginTop: spacing.lg,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    ...shadow.card,
+  },
+  ctaGradient: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaPressed: { transform: [{ scale: 0.98 }] },
+  ctaDisabled: { opacity: 0.5 },
+  ctaText: { color: colors.textOnDark, fontSize: 17, fontWeight: "800" },
+
+  footerLink: { marginTop: spacing.lg, alignSelf: "center" },
+  footer: { fontSize: 14, color: colors.textMuted },
+  footerAccent: { color: colors.brand, fontWeight: "700" },
 });

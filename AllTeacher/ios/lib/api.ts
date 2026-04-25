@@ -92,6 +92,72 @@ export type WeekRow = {
   status: string;
 };
 
+// --- Exercises (Exercise Writer + Evaluator) ---
+
+export type ExerciseType =
+  | "multiple_choice"
+  | "flashcard"
+  | "short_answer"
+  | "essay_prompt";
+
+export type ExerciseContent = {
+  type: ExerciseType;
+  title: string;
+  // multiple_choice
+  prompt?: string;
+  options?: string[];
+  correct_index?: number;
+  // flashcard
+  front?: string;
+  back?: string;
+  // short_answer
+  expected?: string;
+  rubric?: string[];
+  // essay_prompt
+  expected_length?: string;
+  // all
+  explanation?: string;
+};
+
+export type ExerciseSubmission =
+  | { choice_index: number }
+  | { self_rating: "easy" | "medium" | "hard"; note?: string }
+  | { text: string };
+
+export type ExerciseFeedback = {
+  score: number;
+  verdict: "correct" | "partial" | "incorrect" | "reviewed";
+  feedback: string;
+  weak_areas: string[];
+  next_focus: string;
+};
+
+export type ExerciseRow = {
+  id: string;
+  week_id: string | null;
+  type: ExerciseType;
+  content_json: ExerciseContent;
+  submission_json: ExerciseSubmission | null;
+  feedback_json: ExerciseFeedback | null;
+  module_index: number | null;
+  status: "pending" | "submitted" | "evaluated" | "skipped";
+  score: number | null;
+  seen: boolean;
+  created_at: string;
+  evaluated_at: string | null;
+};
+
+export type GenerateExercisesResponse = {
+  curriculum_id: string;
+  week_id: string;
+  exercises: ExerciseRow[];
+};
+
+export type SubmitExerciseResponse = ExerciseFeedback & {
+  id: string;
+  status: "evaluated";
+};
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -163,6 +229,48 @@ export const api = {
     request<{ weeks: WeekRow[] }>(`/curriculum/${curriculumId}/weeks`, {
       headers: authHeaders(token),
     }),
+
+  // --- Exercises ---
+
+  listExercises: (
+    token: string,
+    curriculumId: string,
+    weekId?: string,
+  ) => {
+    const qs = weekId ? `?week_id=${encodeURIComponent(weekId)}` : "";
+    return request<{ exercises: ExerciseRow[] }>(
+      `/curriculum/${curriculumId}/exercises${qs}`,
+      { headers: authHeaders(token) },
+    );
+  },
+
+  generateExercises: (
+    token: string,
+    curriculumId: string,
+    body: { week_id?: string; count?: number } = {},
+  ) =>
+    request<GenerateExercisesResponse>(
+      `/curriculum/${curriculumId}/exercises`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify(body),
+      },
+    ),
+
+  submitExercise: (
+    token: string,
+    exerciseId: string,
+    submission: ExerciseSubmission,
+  ) =>
+    request<SubmitExerciseResponse>(
+      `/curriculum/exercises/${exerciseId}/submit`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({ submission }),
+      },
+    ),
 };
 
 export { BASE_URL };

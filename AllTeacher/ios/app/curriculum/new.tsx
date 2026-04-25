@@ -15,18 +15,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { Gradient } from "@/components/Gradient";
+import { colors, radii, shadow, spacing, type } from "@/lib/theme";
 
 /**
- * Best-effort device locale → 2-letter BCP-47 language code. Works without
- * expo-localization by falling back through Intl and the iOS native module.
+ * Best-effort device locale → 2-letter BCP-47 language code.
  */
 function detectLanguage(): string {
-  // 1. Intl (present in Hermes).
   try {
     const loc = Intl.DateTimeFormat().resolvedOptions().locale;
     if (loc) return loc.split("-")[0].toLowerCase();
   } catch {}
-  // 2. iOS native settings.
   if (Platform.OS === "ios") {
     const s = NativeModules.SettingsManager?.settings;
     const raw: string | undefined =
@@ -36,35 +35,35 @@ function detectLanguage(): string {
   return "en";
 }
 
-/** A small set of popular native languages. Free-text override available. */
-const LANGUAGES: { code: string; label: string }[] = [
-  { code: "en", label: "English" },
-  { code: "bg", label: "Български" },
-  { code: "es", label: "Español" },
-  { code: "fr", label: "Français" },
-  { code: "de", label: "Deutsch" },
-  { code: "it", label: "Italiano" },
-  { code: "pt", label: "Português" },
-  { code: "nl", label: "Nederlands" },
-  { code: "pl", label: "Polski" },
-  { code: "ro", label: "Română" },
-  { code: "tr", label: "Türkçe" },
-  { code: "ru", label: "Русский" },
-  { code: "uk", label: "Українська" },
-  { code: "ar", label: "العربية" },
-  { code: "hi", label: "हिन्दी" },
-  { code: "ja", label: "日本語" },
-  { code: "ko", label: "한국어" },
-  { code: "zh", label: "中文" },
+const LANGUAGES: { code: string; label: string; flag: string }[] = [
+  { code: "en", label: "English", flag: "🇬🇧" },
+  { code: "bg", label: "Български", flag: "🇧🇬" },
+  { code: "es", label: "Español", flag: "🇪🇸" },
+  { code: "fr", label: "Français", flag: "🇫🇷" },
+  { code: "de", label: "Deutsch", flag: "🇩🇪" },
+  { code: "it", label: "Italiano", flag: "🇮🇹" },
+  { code: "pt", label: "Português", flag: "🇵🇹" },
+  { code: "nl", label: "Nederlands", flag: "🇳🇱" },
+  { code: "pl", label: "Polski", flag: "🇵🇱" },
+  { code: "ro", label: "Română", flag: "🇷🇴" },
+  { code: "tr", label: "Türkçe", flag: "🇹🇷" },
+  { code: "ru", label: "Русский", flag: "🇷🇺" },
+  { code: "uk", label: "Українська", flag: "🇺🇦" },
+  { code: "ar", label: "العربية", flag: "🇸🇦" },
+  { code: "hi", label: "हिन्दी", flag: "🇮🇳" },
+  { code: "ja", label: "日本語", flag: "🇯🇵" },
+  { code: "ko", label: "한국어", flag: "🇰🇷" },
+  { code: "zh", label: "中文", flag: "🇨🇳" },
 ];
 
-/**
- * New curriculum entry screen.
- *
- * User types a free-form goal (any language), picks their native language,
- * we POST it to /curriculum and the backend kicks off the Assessor. We
- * then push into /curriculum/[id] which drives the MCQ loop.
- */
+const SUGGESTIONS = [
+  "Conversational Italian for a summer trip",
+  "Python — basics to building a small web app",
+  "Jazz piano improvisation",
+  "GMAT quant in 6 weeks",
+  "Watercolor painting for absolute beginners",
+];
+
 export default function NewCurriculumScreen() {
   const router = useRouter();
   const { session } = useAuth();
@@ -83,7 +82,7 @@ export default function NewCurriculumScreen() {
     }
     const trimmed = goal.trim();
     if (!trimmed) {
-      setError("Please describe what you want to learn.");
+      setError("Tell us what you want to learn first.");
       return;
     }
     const lang = (nativeLanguage || "en").trim().toLowerCase();
@@ -102,205 +101,328 @@ export default function NewCurriculumScreen() {
     }
   };
 
+  const goBack = () =>
+    router.canGoBack() ? router.back() : router.replace("/");
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: "New curriculum" }} />
-      <View style={styles.toolbar}>
-        <Pressable
-          style={styles.toolbarBtn}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-          disabled={submitting}
-        >
-          <Text style={styles.toolbarBtnText}>← Back</Text>
-        </Pressable>
-        <Pressable
-          style={styles.toolbarBtn}
-          onPress={() => router.replace("/")}
-          disabled={submitting}
-        >
-          <Text style={styles.toolbarBtnText}>Home</Text>
-        </Pressable>
-      </View>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-        >
-          <Text style={styles.title}>What do you want to learn?</Text>
-          <Text style={styles.subtitle}>
-            Write it in any language — a topic, skill, or goal. The Assessor
-            will ask a few questions and build your curriculum.
-          </Text>
+    <View style={styles.root}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <Gradient
+        from={colors.brand}
+        via={colors.accent}
+        to="#ff9966"
+        angle={155}
+        style={styles.bgGradient}
+      />
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <View style={styles.toolbar}>
+          <Pressable
+            style={styles.toolbarBtn}
+            onPress={goBack}
+            disabled={submitting}
+          >
+            <Text style={styles.toolbarBtnText}>← Back</Text>
+          </Pressable>
+          <Text style={styles.toolbarTitle}>New curriculum</Text>
+          <Pressable
+            style={styles.toolbarBtn}
+            onPress={() => router.replace("/")}
+            disabled={submitting}
+          >
+            <Text style={styles.toolbarBtnText}>Home</Text>
+          </Pressable>
+        </View>
 
-          <View style={styles.field}>
-            <Text style={styles.label}>Your goal</Text>
-            <TextInput
-              style={styles.textarea}
-              placeholder="e.g. Learn conversational Italian for a trip this summer"
-              placeholderTextColor="#999"
-              multiline
-              autoFocus
-              value={goal}
-              onChangeText={setGoal}
-              editable={!submitting}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <Text style={styles.label}>
-              I want the questions in (your native language)
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <Text style={styles.eyebrow}>Step 1 of 2 · The goal</Text>
+            <Text style={styles.title}>What do you want{"\n"}to learn? 🚀</Text>
+            <Text style={styles.subtitle}>
+              Write a topic, skill, or goal — in any language. We'll ask a few
+              quick questions and build your curriculum.
             </Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsRow}
-            >
-              {LANGUAGES.map((l) => {
-                const active = l.code === nativeLanguage;
-                return (
+
+            <View style={styles.card}>
+              <Text style={styles.fieldLabel}>Your goal</Text>
+              <TextInput
+                style={styles.textarea}
+                placeholder="e.g. Conversational Italian for a summer trip"
+                placeholderTextColor={colors.textFaint}
+                multiline
+                autoFocus
+                value={goal}
+                onChangeText={setGoal}
+                editable={!submitting}
+              />
+              <Text style={styles.suggestionsLabel}>Need inspiration?</Text>
+              <View style={styles.suggestionsWrap}>
+                {SUGGESTIONS.map((s) => (
                   <Pressable
-                    key={l.code}
-                    style={[styles.chip, active && styles.chipActive]}
-                    onPress={() => setNativeLanguage(l.code)}
+                    key={s}
+                    style={styles.suggestionChip}
+                    onPress={() => setGoal(s)}
                     disabled={submitting}
                   >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        active && styles.chipTextActive,
-                      ]}
-                    >
-                      {l.label}
-                    </Text>
+                    <Text style={styles.suggestionText}>{s}</Text>
                   </Pressable>
-                );
-              })}
-            </ScrollView>
-            <TextInput
-              style={styles.input}
-              placeholder="or type a language code (e.g. sv, el)"
-              placeholderTextColor="#999"
-              autoCapitalize="none"
-              autoCorrect={false}
-              value={nativeLanguage}
-              onChangeText={setNativeLanguage}
-              editable={!submitting}
-            />
-            <Text style={styles.hint}>
-              Detected from your device: {defaultLang}
-            </Text>
-          </View>
+                ))}
+              </View>
+            </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+            <View style={styles.card}>
+              <Text style={styles.fieldLabel}>Your native language</Text>
+              <Text style={styles.fieldHint}>
+                Questions and feedback will arrive in this language.
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsRow}
+              >
+                {LANGUAGES.map((l) => {
+                  const active = l.code === nativeLanguage;
+                  return (
+                    <Pressable
+                      key={l.code}
+                      style={[styles.chip, active && styles.chipActive]}
+                      onPress={() => setNativeLanguage(l.code)}
+                      disabled={submitting}
+                    >
+                      <Text style={styles.chipFlag}>{l.flag}</Text>
+                      <Text
+                        style={[
+                          styles.chipText,
+                          active && styles.chipTextActive,
+                        ]}
+                      >
+                        {l.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <TextInput
+                style={styles.input}
+                placeholder="or type a code: sv, el, vi…"
+                placeholderTextColor={colors.textFaint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={nativeLanguage}
+                onChangeText={setNativeLanguage}
+                editable={!submitting}
+              />
+              <Text style={styles.fieldHint}>
+                Detected from your device: {defaultLang}
+              </Text>
+            </View>
 
-          <Pressable
-            style={[styles.primary, submitting && styles.primaryDisabled]}
-            onPress={start}
-            disabled={submitting}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.primaryText}>Start assessment</Text>
-            )}
-          </Pressable>
+            {error ? (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            ) : null}
 
-          <Pressable
-            style={styles.secondary}
-            onPress={() => router.back()}
-            disabled={submitting}
-          >
-            <Text style={styles.secondaryText}>Cancel</Text>
-          </Pressable>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <Pressable
+              disabled={submitting}
+              onPress={start}
+              style={({ pressed }) => [
+                styles.cta,
+                submitting && styles.ctaDisabled,
+                pressed && !submitting && styles.ctaPressed,
+              ]}
+            >
+              <Gradient
+                from={colors.brand}
+                to={colors.brandDeep}
+                angle={135}
+                style={styles.ctaGradient}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textOnDark} />
+                ) : (
+                  <Text style={styles.ctaText}>Start assessment →</Text>
+                )}
+              </Gradient>
+            </Pressable>
+
+            <Pressable
+              style={styles.cancel}
+              onPress={goBack}
+              disabled={submitting}
+            >
+              <Text style={styles.cancelText}>Cancel</Text>
+            </Pressable>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  root: { flex: 1, backgroundColor: colors.bg },
+  bgGradient: { ...StyleSheet.absoluteFillObject, height: 280 },
+  safe: { flex: 1 },
+
   toolbar: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-    backgroundColor: "#fafafa",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
   toolbarBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radii.pill,
+    backgroundColor: "rgba(255,255,255,0.22)",
   },
-  toolbarBtnText: { fontSize: 15, color: "#0a84ff", fontWeight: "600" },
-  content: { padding: 24, gap: 16 },
-  title: { fontSize: 26, fontWeight: "700" },
-  subtitle: { fontSize: 15, color: "#555", marginBottom: 8 },
-  field: { gap: 6 },
-  label: {
+  toolbarBtnText: {
+    fontSize: 14,
+    color: colors.textOnDark,
+    fontWeight: "700",
+  },
+  toolbarTitle: {
+    color: colors.textOnDark,
+    fontSize: 14,
+    fontWeight: "700",
+    letterSpacing: 0.4,
+  },
+
+  content: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xxl },
+  eyebrow: {
+    color: "rgba(255,255,255,0.85)",
     fontSize: 12,
-    fontWeight: "600",
-    color: "#888",
+    fontWeight: "800",
+    letterSpacing: 1.2,
     textTransform: "uppercase",
+    marginTop: spacing.md,
+  },
+  title: {
+    fontSize: 36,
+    fontWeight: "900",
+    color: colors.textOnDark,
+    letterSpacing: -0.6,
+    lineHeight: 40,
+  },
+  subtitle: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.92)",
+    lineHeight: 22,
+    marginBottom: spacing.sm,
+  },
+
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    gap: spacing.sm,
+    ...shadow.card,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.brand,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  fieldHint: { fontSize: 13, color: colors.textMuted },
+
+  textarea: {
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    fontSize: 16,
+    minHeight: 110,
+    textAlignVertical: "top",
+    color: colors.text,
   },
   input: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e3e3e3",
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    borderColor: "transparent",
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 16,
+    fontSize: 15,
+    color: colors.text,
   },
-  textarea: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#e3e3e3",
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 120,
-    textAlignVertical: "top",
+
+  suggestionsLabel: {
+    ...type.label,
+    marginTop: spacing.sm,
   },
+  suggestionsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  suggestionChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radii.pill,
+    backgroundColor: colors.brandSoft,
+  },
+  suggestionText: {
+    fontSize: 13,
+    color: colors.brandDeep,
+    fontWeight: "600",
+  },
+
   chipsRow: {
-    gap: 8,
-    paddingVertical: 4,
+    gap: spacing.sm,
+    paddingVertical: 6,
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
+    paddingVertical: 10,
+    borderRadius: radii.pill,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   chipActive: {
-    borderColor: "#111",
-    backgroundColor: "#111",
+    borderColor: colors.brand,
+    backgroundColor: colors.brandSoft,
   },
-  chipText: { fontSize: 14, color: "#222" },
-  chipTextActive: { color: "#fff", fontWeight: "600" },
-  hint: { fontSize: 12, color: "#888" },
-  error: { color: "#c0392b", fontSize: 14 },
-  primary: {
-    marginTop: 8,
-    backgroundColor: "#111",
-    borderRadius: 12,
-    paddingVertical: 14,
+  chipFlag: { fontSize: 14 },
+  chipText: { fontSize: 14, color: colors.text },
+  chipTextActive: { color: colors.brandDeep, fontWeight: "700" },
+
+  errorBox: {
+    padding: spacing.md,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radii.md,
+  },
+  errorText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
+
+  cta: {
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    ...shadow.raised,
+  },
+  ctaGradient: {
+    paddingVertical: 16,
     alignItems: "center",
+    justifyContent: "center",
   },
-  primaryDisabled: { opacity: 0.6 },
-  primaryText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  secondary: {
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  secondaryText: { color: "#666", fontSize: 15 },
+  ctaPressed: { transform: [{ scale: 0.98 }] },
+  ctaDisabled: { opacity: 0.5 },
+  ctaText: { color: colors.textOnDark, fontSize: 17, fontWeight: "800" },
+
+  cancel: { paddingVertical: spacing.md, alignItems: "center" },
+  cancelText: { color: colors.textOnDark, fontSize: 14, fontWeight: "600" },
 });
