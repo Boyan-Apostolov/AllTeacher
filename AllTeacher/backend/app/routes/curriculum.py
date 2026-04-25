@@ -1,14 +1,17 @@
 """Curriculum routes.
 
-POST /curriculum                        create curriculum + kick off Assessor
-GET  /curriculum                        list user's curricula
-GET  /curriculum/<id>                   fetch curriculum state
-POST /curriculum/<id>/assessor          submit an answer, get next Q or final summary
+POST   /curriculum                        create curriculum + kick off Assessor
+GET    /curriculum                        list user's curricula
+GET    /curriculum/<id>                   fetch curriculum state
+DELETE /curriculum/<id>                   delete curriculum
+POST   /curriculum/<id>/assessor          submit an answer, get next Q or final summary
+POST   /curriculum/<id>/plan              run Planner, persist plan + week rows
+GET    /curriculum/<id>/weeks             list curriculum_weeks rows
 """
 from flask import Blueprint, jsonify, g, request
 from app.middleware.auth import require_auth
 from app.db.supabase import service_client
-from app.agents import assessor
+from app.agents import assessor, planner
 
 bp = Blueprint("curriculum", __name__, url_prefix="/curriculum")
 
@@ -113,7 +116,7 @@ def list_curricula():
     db = _db()
     rows = (
         db.table("curricula")
-        .select("id,topic,goal,domain,status,assessor_status,level,created_at")
+        .select("id,topic,goal,domain,status,assessor_status,planner_status,level,created_at")
         .eq("user_id", g.user_id)
         .order("created_at", desc=True)
         .execute()
@@ -154,6 +157,120 @@ def delete(curriculum_id):
     if not res.data:
         return jsonify({"error": "not_found"}), 404
     return jsonify({"ok": True, "id": curriculum_id})
+
+
+@bp.post("/<curriculum_id>/plan")
+@require_auth
+def generate_plan(curriculum_id):
+    """Run the Planner against the Assessor summary, persist the plan +
+    one row per week into curriculum_weeks.
+
+    Returns: {id, plan: {...top-level...}, weeks: [{...per-week...}]}
+    """
+    db = _db()
+    row = (
+        db.table("curricula")
+        .select("*")
+        .eq("id", curriculum_id)
+        .eq("user_id", g.user_id)
+        .single()
+        .execute()
+    ).data
+    if not row:
+        return jsonify({"error": "not_found"}), 404
+    if row.get("assessor_status") != "complete":
+        return jsonify({"error": "assessor_not_complete"}), 409
+
+    summary = (row.get("assessment_json") or {}).get("summary") or {}
+
+    payload = {
+        "goal": row.get("goal") or row.get("topic") or "",
+        "native_language": row.get("native_language") or "en",
+        "domain": row.get("domain") or summary.get("domain"),
+        "level": row.get("level") or summary.get("level"),
+        "learning_style": row.get("learning_style") or summary.get("learning_style"),
+        "time_budget_mins_per_day": row.get("time_budget_mins_per_day")
+            or summary.get("time_budget_mins_per_day"),
+        "target_language": row.get("target_language") or summary.get("target_language"),
+        "notes": summary.get("notes") or "",
+    }
+
+    # Mark in_progress so the iOS app can show a spinner if it's polling.
+    db.table("curricula").update({
+        "planner_status": "in_progress",
+    }).eq("id", curriculum_id).execute()
+
+    try:
+        result = planner.plan(payload)
+    except Exception as e:
+        db.table("curricula").update({
+            "planner_status": "pending",
+        }).eq("id", curriculum_id).execute()
+        return jsonify({"error": "planner_failed", "detail": str(e)}), 500
+
+    weeks = result.get("weeks") or []
+    overview = {
+        "title": result.get("title"),
+        "summary_for_user": result.get("summary_for_user"),
+        "total_weeks": result.get("total_weeks") or len(weeks),
+        "phases": result.get("phases") or [],
+    }
+
+    # Wipe any prior weeks for this curriculum and re-insert.
+    db.table("curriculum_weeks").delete().eq(
+        "curriculum_id", curriculum_id
+    ).execute()
+
+    if weeks:
+        rows_to_insert = [
+            {
+                "curriculum_id": curriculum_id,
+                "week_number": int(w.get("week_number") or (i + 1)),
+                "plan_json": w,
+                "status": "pending",
+            }
+            for i, w in enumerate(weeks)
+        ]
+        db.table("curriculum_weeks").insert(rows_to_insert).execute()
+
+    db.table("curricula").update({
+        "plan_json": overview,
+        "planner_status": "complete",
+        # Refine the topic title to the planner's nicer one.
+        "topic": (overview.get("title") or row.get("topic") or "")[:200],
+    }).eq("id", curriculum_id).execute()
+
+    return jsonify({
+        "id": curriculum_id,
+        "plan": overview,
+        "weeks": weeks,
+    })
+
+
+@bp.get("/<curriculum_id>/weeks")
+@require_auth
+def list_weeks(curriculum_id):
+    db = _db()
+    # Authorize via curriculum ownership.
+    own = (
+        db.table("curricula")
+        .select("id")
+        .eq("id", curriculum_id)
+        .eq("user_id", g.user_id)
+        .single()
+        .execute()
+    ).data
+    if not own:
+        return jsonify({"error": "not_found"}), 404
+
+    rows = (
+        db.table("curriculum_weeks")
+        .select("id,week_number,plan_json,status")
+        .eq("curriculum_id", curriculum_id)
+        .order("week_number")
+        .execute()
+    ).data
+    return jsonify({"weeks": rows or []})
 
 
 # --- helpers ---

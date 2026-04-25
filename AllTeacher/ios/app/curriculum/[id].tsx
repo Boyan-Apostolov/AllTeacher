@@ -14,21 +14,21 @@ import {
   type AssessorQuestion,
   type AssessorStepResponse,
   type AssessorSummary,
+  type PlanOverview,
+  type PlanWeek,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 /**
- * Curriculum detail + Assessor quiz loop.
+ * Curriculum detail screen — drives three sequential states for one row:
  *
- * On mount:
- *   - GET /curriculum/:id, pull the transcript out of assessment_json.
- *   - If last entry has no answer, show that question.
- *   - If the row's assessor_status is "complete", show the summary.
+ *   1. Assessor MCQ loop  (assessor_status != 'complete')
+ *   2. Assessment summary + "Generate plan" CTA
+ *      (assessor_status == 'complete' && planner_status != 'complete')
+ *   3. Plan view: title, summary, phases, week cards
+ *      (planner_status == 'complete')
  *
- * On answer:
- *   - POST /curriculum/:id/assessor { answer } — backend appends + asks the
- *     Assessor for the next step, returning either the next question or the
- *     final summary.
+ * State is loaded once on mount and refreshed after each transition.
  */
 export default function CurriculumScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -37,19 +37,29 @@ export default function CurriculumScreen() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Assessor state.
   const [next, setNext] = useState<AssessorQuestion | null>(null);
   const [summary, setSummary] = useState<AssessorSummary | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [questionCount, setQuestionCount] = useState(0);
+
+  // Planner state.
+  const [plan, setPlan] = useState<PlanOverview | null>(null);
+  const [weeks, setWeeks] = useState<PlanWeek[] | null>(null);
+  const [planning, setPlanning] = useState(false);
 
   useEffect(() => {
     if (!id || !session?.access_token) return;
     let cancelled = false;
+    const token = session.access_token;
 
     (async () => {
       try {
-        const row = (await api.getCurriculum(session.access_token, id)) as {
+        const row = (await api.getCurriculum(token, id)) as {
           assessor_status?: string;
+          planner_status?: string;
+          plan_json?: PlanOverview | null;
           assessment_json?: {
             transcript?: Array<{
               question: string;
@@ -64,16 +74,30 @@ export default function CurriculumScreen() {
         const transcript = row.assessment_json?.transcript ?? [];
         setQuestionCount(transcript.length);
 
-        if (row.assessor_status === "complete" && row.assessment_json?.summary) {
+        // Plan already exists?
+        if (row.planner_status === "complete" && row.plan_json) {
+          setPlan(row.plan_json);
+          setSummary(row.assessment_json?.summary ?? null);
+          // Fetch weeks separately.
+          try {
+            const w = await api.getWeeks(token, id);
+            if (!cancelled) setWeeks(w.weeks.map((r) => r.plan_json));
+          } catch {
+            /* non-fatal */
+          }
+        } else if (
+          row.assessor_status === "complete" &&
+          row.assessment_json?.summary
+        ) {
+          // Assessor done, plan not yet.
           setSummary(row.assessment_json.summary);
           setNext(null);
         } else {
+          // Still in the assessor loop.
           const last = transcript[transcript.length - 1];
           if (last && last.answer === null) {
             setNext({ question: last.question, options: last.options });
           } else {
-            // No pending question on the server — shouldn't normally happen
-            // right after create, but tolerate it.
             setNext(null);
           }
         }
@@ -118,21 +142,38 @@ export default function CurriculumScreen() {
     }
   };
 
+  const generatePlan = async () => {
+    if (!id || !session?.access_token) return;
+    setPlanning(true);
+    setError(null);
+    try {
+      const res = await api.generatePlan(session.access_token, id);
+      setPlan(res.plan);
+      setWeeks(res.weeks);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPlanning(false);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <Stack.Screen options={{ title: summary ? "Assessment" : "Assessment" }} />
+      <Stack.Screen options={{ title: "Curriculum" }} />
       <View style={styles.toolbar}>
         <Pressable
           style={styles.toolbarBtn}
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
-          disabled={submitting}
+          onPress={() =>
+            router.canGoBack() ? router.back() : router.replace("/")
+          }
+          disabled={submitting || planning}
         >
           <Text style={styles.toolbarBtnText}>← Back</Text>
         </Pressable>
         <Pressable
           style={styles.toolbarBtn}
           onPress={() => router.replace("/")}
-          disabled={submitting}
+          disabled={submitting || planning}
         >
           <Text style={styles.toolbarBtnText}>Home</Text>
         </Pressable>
@@ -143,8 +184,14 @@ export default function CurriculumScreen() {
             <ActivityIndicator />
             <Text style={styles.hint}>Loading…</Text>
           </View>
+        ) : plan ? (
+          <PlanView plan={plan} weeks={weeks ?? []} />
         ) : summary ? (
-          <SummaryView summary={summary} onDone={() => router.replace("/")} />
+          <SummaryView
+            summary={summary}
+            planning={planning}
+            onGenerate={generatePlan}
+          />
         ) : next ? (
           <QuestionView
             question={next}
@@ -210,10 +257,12 @@ function QuestionView({
 
 function SummaryView({
   summary,
-  onDone,
+  planning,
+  onGenerate,
 }: {
   summary: AssessorSummary;
-  onDone: () => void;
+  planning: boolean;
+  onGenerate: () => void;
 }) {
   return (
     <View style={{ gap: 16 }}>
@@ -236,12 +285,108 @@ function SummaryView({
         {summary.notes ? <Row label="Notes" value={summary.notes} /> : null}
       </View>
 
-      <Pressable style={styles.primary} onPress={onDone}>
-        <Text style={styles.primaryText}>Done</Text>
+      <Pressable
+        style={[styles.primary, planning && styles.primaryDisabled]}
+        onPress={onGenerate}
+        disabled={planning}
+      >
+        {planning ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.primaryText}>Generate my plan</Text>
+        )}
       </Pressable>
-      <Text style={styles.hint}>
-        Curriculum planning (week-by-week) is the next step in the pipeline.
-      </Text>
+      {planning ? (
+        <Text style={styles.hint}>
+          The Planner is drafting your week-by-week curriculum. This usually
+          takes 10–30 seconds.
+        </Text>
+      ) : (
+        <Text style={styles.hint}>
+          The Planner will use this assessment to build your week-by-week
+          curriculum.
+        </Text>
+      )}
+    </View>
+  );
+}
+
+function PlanView({
+  plan,
+  weeks,
+}: {
+  plan: PlanOverview;
+  weeks: PlanWeek[];
+}) {
+  return (
+    <View style={{ gap: 20 }}>
+      <View style={{ gap: 6 }}>
+        <Text style={styles.step}>{plan.total_weeks}-week plan</Text>
+        <Text style={styles.title}>{plan.title}</Text>
+        <Text style={styles.summaryText}>{plan.summary_for_user}</Text>
+      </View>
+
+      {plan.phases.length > 0 ? (
+        <View style={{ gap: 10 }}>
+          <Text style={styles.sectionHeader}>Phases</Text>
+          {plan.phases.map((p, i) => (
+            <View key={`${i}-${p.name}`} style={styles.card}>
+              <Text style={styles.phaseName}>{p.name}</Text>
+              <Text style={styles.phaseWeeks}>
+                Weeks {p.week_numbers.join(", ")}
+              </Text>
+              <Text style={styles.value}>{p.description}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      <View style={{ gap: 10 }}>
+        <Text style={styles.sectionHeader}>Weeks</Text>
+        {weeks.length === 0 ? (
+          <View style={styles.card}>
+            <Text style={styles.hint}>No week details loaded.</Text>
+          </View>
+        ) : (
+          weeks
+            .slice()
+            .sort((a, b) => a.week_number - b.week_number)
+            .map((w) => <WeekCard key={w.week_number} week={w} />)
+        )}
+      </View>
+    </View>
+  );
+}
+
+function WeekCard({ week }: { week: PlanWeek }) {
+  return (
+    <View style={styles.card}>
+      <View style={styles.weekHeader}>
+        <Text style={styles.weekNumber}>W{week.week_number}</Text>
+        <Text style={styles.weekTitle}>{week.title}</Text>
+      </View>
+      <Text style={styles.weekObjective}>{week.objective}</Text>
+      <View style={styles.divider} />
+      <Text style={styles.label}>Modules</Text>
+      <View style={{ gap: 8 }}>
+        {week.modules.map((m, i) => (
+          <View key={`${i}-${m.title}`} style={styles.moduleRow}>
+            <View style={styles.kindPill}>
+              <Text style={styles.kindPillText}>{m.kind}</Text>
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.moduleTitle}>{m.title}</Text>
+              <Text style={styles.moduleDesc}>{m.description}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+      <View style={styles.divider} />
+      <Row label="Milestone" value={week.milestone} />
+      <Row label="Per day" value={`${week.daily_minutes} min`} />
+      {week.exercise_focus.length > 0 ? (
+        <Row label="Focus" value={week.exercise_focus.join(", ")} />
+      ) : null}
     </View>
   );
 }
@@ -275,8 +420,15 @@ const styles = StyleSheet.create({
   toolbarBtnText: { fontSize: 15, color: "#0a84ff", fontWeight: "600" },
   content: { padding: 24, gap: 16 },
   center: { alignItems: "center", gap: 8, paddingVertical: 24 },
-  title: { fontSize: 26, fontWeight: "700" },
+  title: { fontSize: 26, fontWeight: "700", lineHeight: 32 },
   subtitle: { fontSize: 15, color: "#555" },
+  summaryText: { fontSize: 15, color: "#333", lineHeight: 22 },
+  sectionHeader: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#888",
+    textTransform: "uppercase",
+  },
   step: {
     fontSize: 12,
     fontWeight: "700",
@@ -319,5 +471,42 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: "center",
   },
+  primaryDisabled: { opacity: 0.6 },
   primaryText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  phaseName: { fontSize: 16, fontWeight: "700", color: "#111" },
+  phaseWeeks: { fontSize: 12, color: "#888", textTransform: "uppercase" },
+  weekHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  weekNumber: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
+    backgroundColor: "#111",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    overflow: "hidden",
+  },
+  weekTitle: { fontSize: 17, fontWeight: "700", color: "#111", flex: 1 },
+  weekObjective: { fontSize: 14, color: "#444", lineHeight: 20 },
+  divider: { height: 1, backgroundColor: "#eee", marginVertical: 4 },
+  moduleRow: { flexDirection: "row", gap: 10, alignItems: "flex-start" },
+  kindPill: {
+    backgroundColor: "#eef3ff",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    marginTop: 2,
+  },
+  kindPillText: {
+    fontSize: 11,
+    color: "#0a84ff",
+    fontWeight: "700",
+    textTransform: "lowercase",
+  },
+  moduleTitle: { fontSize: 14, fontWeight: "600", color: "#222" },
+  moduleDesc: { fontSize: 13, color: "#555", lineHeight: 18 },
 });
