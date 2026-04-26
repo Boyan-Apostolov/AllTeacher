@@ -177,6 +177,7 @@ def list_curricula():
 
     ids = [r["id"] for r in rows]
     by_curr: dict[str, dict[str, float]] = {}
+    weeks_by_curr: dict[str, dict[str, int]] = {}
     if ids:
         ex_rows = (
             db.table("exercises")
@@ -202,6 +203,21 @@ def list_curricula():
                     s["score_sum"] += float(ex["score"])
                     s["score_count"] += 1
 
+        wk_rows = (
+            db.table("curriculum_weeks")
+            .select("curriculum_id,status")
+            .in_("curriculum_id", ids)
+            .execute()
+        ).data or []
+        for wk in wk_rows:
+            cid = wk["curriculum_id"]
+            w = weeks_by_curr.setdefault(
+                cid, {"sessions_total": 0, "sessions_completed": 0}
+            )
+            w["sessions_total"] += 1
+            if wk.get("status") == "complete":
+                w["sessions_completed"] += 1
+
     out = []
     for r in rows:
         plan = r.pop("plan_json", None)
@@ -211,6 +227,7 @@ def list_curricula():
             if isinstance(tw, int):
                 total_weeks = tw
         s = by_curr.get(r["id"], {})
+        w = weeks_by_curr.get(r["id"], {})
         score_count = int(s.get("score_count", 0))
         avg = (
             float(s.get("score_sum", 0.0)) / score_count
@@ -221,6 +238,9 @@ def list_curricula():
         r["exercises_total"] = int(s.get("exercises_total", 0))
         r["exercises_completed"] = int(s.get("exercises_completed", 0))
         r["avg_score"] = avg
+        # Sessions = curriculum_weeks rows. The home progress bar uses these.
+        r["sessions_total"] = int(w.get("sessions_total", 0))
+        r["sessions_completed"] = int(w.get("sessions_completed", 0))
         out.append(r)
 
     return jsonify({"curricula": out})

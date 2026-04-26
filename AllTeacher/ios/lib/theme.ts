@@ -9,9 +9,9 @@ import { Platform, StyleSheet } from "react-native";
 
 export const colors = {
   // Background
-  bg: "#fbf7ff",          // soft lavender wash
+  bg: "#1e1252",          // deep indigo — dark, not white
   surface: "#ffffff",
-  surfaceMuted: "#f4eefe",
+  surfaceMuted: "#2d1b6e",
 
   // Brand — friendly purple → magenta
   brand: "#7c5cff",

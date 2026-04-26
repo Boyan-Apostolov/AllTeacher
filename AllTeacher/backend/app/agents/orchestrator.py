@@ -384,6 +384,12 @@ class Orchestrator:
             "id", exercise_id
         ).execute()
 
+        # If this was the last unfinished exercise in the week, flip the
+        # parent curriculum_weeks row to status='complete'. That's what the
+        # home progress bar and the per-course detail screen key off of to
+        # show "session done".
+        self._maybe_complete_week(ex.get("week_id"))
+
         return {
             "id": exercise_id,
             "score": float(result.get("score") or 0.0),
@@ -393,6 +399,26 @@ class Orchestrator:
             "next_focus": result.get("next_focus") or "",
             "status": "evaluated",
         }
+
+    def _maybe_complete_week(self, week_id: str | None) -> None:
+        """Mark a curriculum_weeks row complete once every exercise in it has
+        been evaluated. Idempotent; no-op if week_id is missing or the week
+        still has pending/submitted exercises."""
+        if not week_id:
+            return
+        rows = (
+            self.db.table("exercises")
+            .select("status")
+            .eq("week_id", week_id)
+            .execute()
+        ).data or []
+        if not rows:
+            return
+        if any(r.get("status") not in ("evaluated", "skipped") for r in rows):
+            return
+        self.db.table("curriculum_weeks").update(
+            {"status": "complete"}
+        ).eq("id", week_id).execute()
 
     # ----- internals -----
 

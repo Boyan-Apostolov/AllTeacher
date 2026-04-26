@@ -141,7 +141,7 @@ export default function Home() {
 
         {/* Curricula */}
         <View style={{ gap: spacing.sm }}>
-          <Text style={type.eyebrow}>Your curricula</Text>
+          <Text style={styles.sectionLabel}>Your curricula</Text>
 
           {curriculaError ? (
             <View style={[styles.card, styles.cardDanger]}>
@@ -181,7 +181,7 @@ export default function Home() {
 
         {/* Diagnostics — collapsed bottom strip */}
         <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
-          <Text style={type.label}>Diagnostics</Text>
+          <Text style={styles.sectionLabel}>Diagnostics</Text>
           <View style={styles.diagRow}>
             <DiagPill ok={!healthError && !!health} label="API" />
             <DiagPill ok={meOk === true} label="JWT" />
@@ -209,6 +209,47 @@ export default function Home() {
   );
 }
 
+function curriculumProgress(c: CurriculumListItem): {
+  pct: number;
+  stepLabel: string;
+  barColor: string;
+} {
+  // Once the plan is generated, "progress" means: how many sessions have
+  // been completed out of how many sessions there are. A session = one
+  // curriculum_weeks row, and is "complete" when every exercise in it has
+  // been evaluated. The backend rolls these counts up into the list payload.
+  if (c.planner_status === "complete") {
+    const total = c.sessions_total ?? 0;
+    const done = c.sessions_completed ?? 0;
+    if (total > 0) {
+      const pct = Math.max(0, Math.min(1, done / total));
+      const all = done >= total;
+      const stepLabel = all
+        ? `All ${total} sessions complete 🎉`
+        : `${done} of ${total} sessions · ${Math.round(pct * 100)}%`;
+      const barColor = all
+        ? colors.success
+        : done > 0
+          ? colors.brand
+          : colors.textFaint;
+      return { pct: all ? 1 : Math.max(pct, 0.04), stepLabel, barColor };
+    }
+    // Plan ready but no week rows — show "ready to learn" rather than 100%.
+    return {
+      pct: 0.04,
+      stepLabel: "Plan ready · start your first session",
+      barColor: colors.brand,
+    };
+  }
+  if (c.assessor_status === "complete") {
+    return { pct: 0.66, stepLabel: "Step 2/3 · generate your plan", barColor: colors.brand };
+  }
+  if (c.assessor_status === "in_progress") {
+    return { pct: 0.33, stepLabel: "Step 1/3 · assessment in progress", barColor: colors.warning };
+  }
+  return { pct: 0.05, stepLabel: "Step 1/3 · start assessment", barColor: colors.textFaint };
+}
+
 function CurriculumRow({
   item,
   onOpen,
@@ -220,33 +261,54 @@ function CurriculumRow({
 }) {
   const { badge, badgeBg, badgeFg } = statusBadge(item);
   const emoji = domainEmoji(item.domain);
+  const { pct, stepLabel, barColor } = curriculumProgress(item);
+
   return (
     <View style={[styles.curriculumRow, shadow.card]}>
       <Pressable style={styles.curriculumBody} onPress={onOpen}>
-        <View style={styles.curriculumIcon}>
-          <Text style={{ fontSize: 22 }}>{emoji}</Text>
-        </View>
-        <View style={{ flex: 1, gap: 4 }}>
-          <Text style={styles.curriculumTitle} numberOfLines={2}>
-            {item.goal || item.topic || "Untitled"}
-          </Text>
-          <View style={styles.curriculumMetaRow}>
-            <View
-              style={[styles.statusBadge, { backgroundColor: badgeBg }]}
-            >
-              <Text style={[styles.statusBadgeText, { color: badgeFg }]}>
-                {badge}
-              </Text>
+        {/* Top row: icon + title + badge */}
+        <View style={styles.curriculumTopRow}>
+          <View style={styles.curriculumIcon}>
+            <Text style={{ fontSize: 22 }}>{emoji}</Text>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.curriculumTitle} numberOfLines={2}>
+              {item.goal || item.topic || "Untitled"}
+            </Text>
+            <View style={styles.curriculumMetaRow}>
+              <View
+                style={[styles.statusBadge, { backgroundColor: badgeBg }]}
+              >
+                <Text style={[styles.statusBadgeText, { color: badgeFg }]}>
+                  {badge}
+                </Text>
+              </View>
+              {item.level ? (
+                <Text style={styles.curriculumMeta}>· {item.level}</Text>
+              ) : null}
+              {item.domain ? (
+                <Text style={styles.curriculumMeta}>· {item.domain}</Text>
+              ) : null}
             </View>
-            {item.level ? (
-              <Text style={styles.curriculumMeta}>· {item.level}</Text>
-            ) : null}
-            {item.domain ? (
-              <Text style={styles.curriculumMeta}>· {item.domain}</Text>
-            ) : null}
+          </View>
+        </View>
+
+        {/* Progress bar + stats */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressStepLabel}>{stepLabel}</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${pct * 100}%` as any, backgroundColor: barColor },
+              ]}
+            />
           </View>
         </View>
       </Pressable>
+
       <Pressable
         style={styles.removeBtn}
         onPress={onRemove}
@@ -330,6 +392,15 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
 
+  // Text that sits directly on the dark bg (not inside a card)
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#ffffffaa",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+
   // Hero
   hero: {
     borderRadius: radii.xl,
@@ -409,9 +480,13 @@ const styles = StyleSheet.create({
   },
   curriculumBody: {
     flex: 1,
+    flexDirection: "column",
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  curriculumTopRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: spacing.md,
     gap: spacing.md,
   },
   curriculumIcon: {
@@ -440,6 +515,31 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   statusBadgeText: { fontSize: 11, fontWeight: "700" },
+
+  // Progress bar
+  progressSection: {
+    gap: 5,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  progressStepLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "500",
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: radii.pill,
+  },
+
   removeBtn: {
     paddingHorizontal: 14,
     justifyContent: "center",
@@ -461,7 +561,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
   },
   diagPillText: { fontSize: 12, fontWeight: "700" },
-  diagDetail: { fontSize: 11, color: colors.textFaint },
+  diagDetail: { fontSize: 11, color: "#ffffff55" },
   diagError: { fontSize: 11, color: colors.danger },
 
   // Sign out
@@ -471,8 +571,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
+    borderColor: "#ffffff22",
+    backgroundColor: "#ffffff0f",
   },
-  signOutText: { fontSize: 14, color: colors.textMuted, fontWeight: "600" },
+  signOutText: { fontSize: 14, color: "#ffffffaa", fontWeight: "600" },
 });

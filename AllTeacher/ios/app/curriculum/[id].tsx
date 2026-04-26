@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,12 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Stack, useLocalSearchParams, useRouter } from "expo-router";
+import {
+  Stack,
+  useFocusEffect,
+  useLocalSearchParams,
+  useRouter,
+} from "expo-router";
 import {
   api,
   type AssessorQuestion,
@@ -102,6 +107,25 @@ export default function CurriculumScreen() {
       cancelled = true;
     };
   }, [id, session?.access_token]);
+
+  // When the screen regains focus (e.g. coming back from a finished
+  // session), refresh the weeks so completed sessions show their new
+  // status without forcing the user to leave and re-enter the course.
+  useFocusEffect(
+    useCallback(() => {
+      if (!id || !session?.access_token || !plan) return;
+      let cancelled = false;
+      api
+        .getWeeks(session.access_token, id)
+        .then((w) => {
+          if (!cancelled) setWeeks(w.weeks);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [id, session?.access_token, plan]),
+  );
 
   const applyStep = (res: AssessorStepResponse) => {
     if (res.complete) {
@@ -395,6 +419,18 @@ function PlanView({
   weeks: WeekRow[];
   onStartSession: (weekId: string) => void;
 }) {
+  const sortedWeeks = weeks
+    .slice()
+    .sort((a, b) => a.week_number - b.week_number);
+  const upcoming =
+    sortedWeeks.find((w) => w.status !== "complete") ?? null;
+  const completedCount = sortedWeeks.filter(
+    (w) => w.status === "complete",
+  ).length;
+  const totalCount = sortedWeeks.length;
+  const allDone = totalCount > 0 && completedCount >= totalCount;
+  const pct = totalCount > 0 ? completedCount / totalCount : 0;
+
   return (
     <View style={{ gap: spacing.xl }}>
       <View style={{ gap: spacing.sm, paddingHorizontal: spacing.xs }}>
@@ -402,6 +438,76 @@ function PlanView({
         <Text style={styles.heroTitle}>{plan.title}</Text>
         <Text style={styles.heroSub}>{plan.summary_for_user}</Text>
       </View>
+
+      {/* Course-level progress + "Up next" hero — pinned to the top so the
+          user can always see how far they are and jump straight into the
+          next session. */}
+      {totalCount > 0 ? (
+        <View style={styles.upNextCard}>
+          <View style={styles.upNextHeaderRow}>
+            <Text style={styles.upNextEyebrow}>
+              {allDone ? "Course complete" : "Up next"}
+            </Text>
+            <Text style={styles.upNextProgress}>
+              {completedCount}/{totalCount} sessions
+            </Text>
+          </View>
+          <View style={styles.upNextBarTrack}>
+            <View
+              style={[
+                styles.upNextBarFill,
+                {
+                  width: `${Math.round(pct * 100)}%`,
+                  backgroundColor: allDone ? colors.success : colors.brand,
+                },
+              ]}
+            />
+          </View>
+          {upcoming ? (
+            <>
+              <Text style={styles.upNextWeekLabel}>
+                Week {upcoming.plan_json.week_number}
+                {upcoming.status === "in_progress" ? " · in progress" : ""}
+              </Text>
+              <Text style={styles.upNextTitle}>
+                {upcoming.plan_json.title}
+              </Text>
+              {upcoming.plan_json.objective ? (
+                <Text style={styles.upNextObjective}>
+                  {upcoming.plan_json.objective}
+                </Text>
+              ) : null}
+              {upcoming.id ? (
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.cta,
+                    pressed && styles.ctaPressed,
+                    { marginTop: spacing.sm },
+                  ]}
+                  onPress={() => onStartSession(upcoming.id)}
+                >
+                  <Gradient
+                    from={colors.brand}
+                    to={colors.brandDeep}
+                    angle={135}
+                    style={styles.ctaGradient}
+                  >
+                    <Text style={styles.ctaText}>
+                      {upcoming.status === "in_progress"
+                        ? "Continue session →"
+                        : "Start session →"}
+                    </Text>
+                  </Gradient>
+                </Pressable>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.upNextObjective}>
+              Every session is done. Great work 🎉
+            </Text>
+          )}
+        </View>
+      ) : null}
 
       {plan.phases.length > 0 ? (
         <View style={{ gap: spacing.sm }}>
@@ -422,25 +528,23 @@ function PlanView({
       ) : null}
 
       <View style={{ gap: spacing.sm }}>
-        <Text style={styles.sectionHeader}>Weeks</Text>
-        {weeks.length === 0 ? (
+        <Text style={styles.sectionHeader}>All sessions</Text>
+        {sortedWeeks.length === 0 ? (
           <View style={styles.card}>
             <Text style={styles.hint}>No week details loaded.</Text>
           </View>
         ) : (
-          weeks
-            .slice()
-            .sort((a, b) => a.week_number - b.week_number)
-            .map((row, idx) => (
-              <WeekCard
-                key={row.id || row.week_number}
-                row={row}
-                index={idx}
-                onStartSession={
-                  row.id ? () => onStartSession(row.id) : undefined
-                }
-              />
-            ))
+          sortedWeeks.map((row, idx) => (
+            <WeekCard
+              key={row.id || row.week_number}
+              row={row}
+              index={idx}
+              isUpcoming={!!upcoming && row.id === upcoming.id}
+              onStartSession={
+                row.id ? () => onStartSession(row.id) : undefined
+              }
+            />
+          ))
         )}
       </View>
     </View>
@@ -459,16 +563,26 @@ const WEEK_GRADIENTS: Array<{ from: string; to: string }> = [
 function WeekCard({
   row,
   index,
+  isUpcoming,
   onStartSession,
 }: {
   row: WeekRow;
   index: number;
+  isUpcoming?: boolean;
   onStartSession?: () => void;
 }) {
   const week: PlanWeek = row.plan_json;
   const grad = WEEK_GRADIENTS[index % WEEK_GRADIENTS.length];
+  const isComplete = row.status === "complete";
+  const isInProgress = row.status === "in_progress";
   return (
-    <View style={styles.weekCard}>
+    <View
+      style={[
+        styles.weekCard,
+        isComplete && styles.weekCardComplete,
+        !isComplete && isUpcoming && styles.weekCardUpcoming,
+      ]}
+    >
       <View style={styles.weekHeader}>
         <Gradient
           from={grad.from}
@@ -476,10 +590,25 @@ function WeekCard({
           angle={135}
           style={styles.weekBadge}
         >
-          <Text style={styles.weekBadgeText}>W{week.week_number}</Text>
+          <Text style={styles.weekBadgeText}>
+            {isComplete ? "✓" : `W${week.week_number}`}
+          </Text>
         </Gradient>
         <View style={{ flex: 1 }}>
-          <Text style={styles.weekTitle}>{week.title}</Text>
+          <View style={styles.weekTitleRow}>
+            <Text style={styles.weekTitle}>{week.title}</Text>
+            {isComplete ? (
+              <View style={styles.weekStatusPillDone}>
+                <Text style={styles.weekStatusPillDoneText}>Completed</Text>
+              </View>
+            ) : isInProgress ? (
+              <View style={styles.weekStatusPillProgress}>
+                <Text style={styles.weekStatusPillProgressText}>
+                  In progress
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.weekObjective}>{week.objective}</Text>
         </View>
       </View>
@@ -523,12 +652,18 @@ function WeekCard({
           onPress={onStartSession}
         >
           <Gradient
-            from={grad.from}
-            to={grad.to}
+            from={isComplete ? colors.success : grad.from}
+            to={isComplete ? colors.success : grad.to}
             angle={135}
             style={styles.weekCtaGradient}
           >
-            <Text style={styles.weekCtaText}>Start session →</Text>
+            <Text style={styles.weekCtaText}>
+              {isComplete
+                ? "Review session ✓"
+                : isInProgress
+                  ? "Continue session →"
+                  : "Start session →"}
+            </Text>
           </Gradient>
         </Pressable>
       ) : null}
@@ -759,6 +894,75 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     ...shadow.card,
   },
+  weekCardComplete: {
+    borderWidth: 2,
+    borderColor: colors.success,
+    backgroundColor: colors.successSoft,
+  },
+  weekCardUpcoming: {
+    borderWidth: 2,
+    borderColor: colors.brand,
+  },
+
+  // "Up next" hero pinned to the top of the course view
+  upNextCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    borderRadius: radii.xl,
+    gap: spacing.sm,
+    borderWidth: 2,
+    borderColor: colors.brand,
+    ...shadow.raised,
+  },
+  upNextHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  upNextEyebrow: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.brand,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  upNextProgress: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.textMuted,
+    letterSpacing: 0.4,
+  },
+  upNextBarTrack: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.border,
+    overflow: "hidden",
+    marginVertical: spacing.xs,
+  },
+  upNextBarFill: {
+    height: "100%",
+    borderRadius: 4,
+  },
+  upNextWeekLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.textFaint,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginTop: spacing.xs,
+  },
+  upNextTitle: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: colors.text,
+    letterSpacing: -0.3,
+    lineHeight: 26,
+  },
+  upNextObjective: {
+    fontSize: 14,
+    color: colors.textMuted,
+    lineHeight: 20,
+  },
   weekHeader: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   weekBadge: {
     width: 48,
@@ -771,6 +975,38 @@ const styles = StyleSheet.create({
     color: colors.textOnDark,
     fontSize: 14,
     fontWeight: "800",
+  },
+  weekTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    flexWrap: "wrap",
+  },
+  weekStatusPillDone: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.success,
+  },
+  weekStatusPillDoneText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.textOnDark,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  weekStatusPillProgress: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    backgroundColor: colors.warningSoft,
+  },
+  weekStatusPillProgressText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: colors.warning,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
   },
   weekTitle: { fontSize: 17, fontWeight: "800", color: colors.text },
   weekObjective: {

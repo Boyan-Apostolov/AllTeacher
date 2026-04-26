@@ -48,6 +48,15 @@ export type CurriculumListItem = {
   planner_status: string | null;
   level: string | null;
   created_at: string;
+  // Rolled-up progress stats from the backend so the home screen can render
+  // a real progress bar without N round-trips. May be missing on older API
+  // versions — treat all as optional.
+  total_weeks?: number;
+  exercises_total?: number;
+  exercises_completed?: number;
+  avg_score?: number | null;
+  sessions_total?: number;
+  sessions_completed?: number;
 };
 
 export type PlanPhase = {
