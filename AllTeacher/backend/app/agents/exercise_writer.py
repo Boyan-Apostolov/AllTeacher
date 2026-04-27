@@ -61,6 +61,7 @@ class WriterInput(TypedDict, total=False):
     week_modules: list[dict[str, Any]]      # [{title, kind, description}, ...]
     exercise_focus: list[str]
     seen_titles: list[str]                  # dedupe against these
+    recent_weak_areas: list[str]            # adaptive bias for follow-up sessions
     count: int                              # how many exercises to generate
 
 
@@ -78,6 +79,8 @@ Types — pick the right one per item; mix types across the batch:
 - essay_prompt: longer task. Set `rubric` (3–5 bullets) and `expected_length`. Writing, explanation, critique, conversation simulation.
 
 Quality: each non-essay item is doable in ~2 min, essay in ~10 min. Calibrate difficulty to `level`. Honor `exercise_focus` (if empty, derive from week modules + objective). Honor `learning_style`. Skip any title in `seen_titles`; if a topic must repeat, vary phrasing AND angle.
+
+Adaptation: if `recent_weak_areas` is non-empty, bias the batch toward those tags — at least half of the items should target one of them — without losing the week's `exercise_focus`. If `recent_weak_areas` is empty (e.g. first session), generate a balanced introductory batch instead.
 
 Generate exactly `count` exercises. Each needs a 1-sentence `explanation` in native_language (don't restate the prompt).
 
