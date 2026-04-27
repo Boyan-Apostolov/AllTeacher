@@ -43,6 +43,11 @@ export const homeStyles = StyleSheet.create({
     fontSize: 15,
     marginBottom: spacing.md,
   },
+  heroCtaRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
   heroCta: {
     backgroundColor: "#ffffff",
     paddingVertical: 12,
@@ -53,6 +58,20 @@ export const homeStyles = StyleSheet.create({
   },
   heroCtaText: {
     color: colors.brandDeep,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  heroCtaGhost: {
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: radii.pill,
+    alignSelf: "flex-start",
+    backgroundColor: "#ffffff22",
+    borderWidth: 1,
+    borderColor: "#ffffff66",
+  },
+  heroCtaGhostText: {
+    color: "#ffffff",
     fontSize: 15,
     fontWeight: "700",
   },

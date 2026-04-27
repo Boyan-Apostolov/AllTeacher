@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.agents import evaluator, exercise_bank, exercise_writer
+from app.agents import evaluator, exercise_bank, exercise_writer, tracker
 
 from ._base import now_iso
 from .errors import Conflict, NotFound, OrchestratorError
@@ -23,19 +23,17 @@ from .types import ExerciseEvalPayload, ExercisesPayload
 
 class _ExercisesMixin:
     """Provided by `_OrchestratorBase`: `db`, `_load_curriculum`,
-    `_load_exercise`, `_resolve_week`."""
+    `_load_exercise`, `_resolve_week`. Provided by `_TrackerMixin`:
+    `_run_adapter_if_eligible`.
+
+    NOTE: do **not** add `def _load_curriculum(...): ...` style stubs here
+    for type-checking — at runtime those bodies return None and shadow the
+    real implementation on `_OrchestratorBase` because this mixin sits
+    earlier in the MRO. If mypy needs hints, lean on `Protocol` + `cast`
+    rather than declarative method bodies.
+    """
 
     db: Any
-
-    def _load_curriculum(  # type: ignore[empty-body]
-        self, curriculum_id: str, user_id: str
-    ) -> dict[str, Any]: ...
-    def _load_exercise(  # type: ignore[empty-body]
-        self, exercise_id: str, user_id: str
-    ) -> dict[str, Any]: ...
-    def _resolve_week(  # type: ignore[empty-body]
-        self, curriculum_id: str, week_id: str | None
-    ) -> dict[str, Any] | None: ...
 
     # ----- public methods -----
 
@@ -284,34 +282,61 @@ class _ExercisesMixin:
                 detail=str(e),
             )
 
+        evaluated_at = now_iso()
         update_row = {
             "feedback_json": result,
             "score": result.get("score"),
             "status": "evaluated",
-            "evaluated_at": now_iso(),
+            "evaluated_at": evaluated_at,
         }
         self.db.table("exercises").update(update_row).eq(
             "id", exercise_id
         ).execute()
 
-        # Roll the Evaluator's weak_areas into the curriculum so the next
-        # session's bank lookup can target them. Capped to the most recent
-        # K entries so adaptation tracks recent performance, not history.
+        # Roll the Evaluator's weak_areas + strengths into the curriculum.
+        # Both are capped to the most recent K entries so adaptation tracks
+        # recent performance, not history. Also bump last_active_at so the
+        # tracker doesn't have to scan exercises just to know "did this
+        # user practice today".
+        curr_update: dict[str, Any] = {"last_active_at": evaluated_at}
         new_weak = result.get("weak_areas") or []
         if new_weak:
-            merged = exercise_bank.merge_recent_weak_areas(
-                curriculum.get("recent_weak_areas") or [],
-                new_weak,
+            curr_update["recent_weak_areas"] = (
+                exercise_bank.merge_recent_weak_areas(
+                    curriculum.get("recent_weak_areas") or [],
+                    new_weak,
+                )
             )
-            self.db.table("curricula").update(
-                {"recent_weak_areas": merged}
-            ).eq("id", curriculum["id"]).execute()
+        new_strengths = result.get("strengths") or []
+        if new_strengths:
+            curr_update["recent_strengths"] = tracker.merge_recent_strengths(
+                curriculum.get("recent_strengths") or [],
+                new_strengths,
+            )
+        self.db.table("curricula").update(curr_update).eq(
+            "id", curriculum["id"]
+        ).execute()
 
         # If this was the last unfinished exercise in the week, flip the
         # parent curriculum_weeks row to status='complete'. That's what the
         # home progress bar and the per-course detail screen key off of to
         # show "session done".
-        self._maybe_complete_week(ex.get("week_id"))
+        week_just_completed = self._maybe_complete_week(ex.get("week_id"))
+
+        # When a session just flipped complete, run the Adapter so the
+        # upcoming weeks reflect what the user has actually demonstrated.
+        # Fail-soft: an Adapter failure should never break the user's
+        # submit response — they already got their feedback.
+        if week_just_completed:
+            try:
+                # Re-load the curriculum so the Adapter sees the just-merged
+                # weak_areas / strengths / last_active_at.
+                fresh = self._load_curriculum(curriculum["id"], user_id)
+                self._run_adapter_if_eligible(fresh)
+            except Exception:
+                # Swallow — the Adapter is best-effort here. The user can
+                # still re-trigger via the explicit re-plan endpoint.
+                pass
 
         return {
             "id": exercise_id,
@@ -325,12 +350,13 @@ class _ExercisesMixin:
 
     # ----- internals -----
 
-    def _maybe_complete_week(self, week_id: str | None) -> None:
-        """Mark a curriculum_weeks row complete once every exercise in it has
-        been evaluated. Idempotent; no-op if week_id is missing or the week
-        still has pending/submitted exercises."""
+    def _maybe_complete_week(self, week_id: str | None) -> bool:
+        """Mark a curriculum_weeks row complete once every exercise in it
+        has been evaluated. Idempotent — returns True only when this call
+        flipped the status from non-complete to 'complete' (so the caller
+        can fire one-shot side effects like running the Adapter)."""
         if not week_id:
-            return
+            return False
         rows = (
             self.db.table("exercises")
             .select("status")
@@ -338,9 +364,22 @@ class _ExercisesMixin:
             .execute()
         ).data or []
         if not rows:
-            return
+            return False
         if any(r.get("status") not in ("evaluated", "skipped") for r in rows):
-            return
+            return False
+
+        # Read the current status so we can detect a flip vs a no-op.
+        current = (
+            self.db.table("curriculum_weeks")
+            .select("status")
+            .eq("id", week_id)
+            .single()
+            .execute()
+        ).data or {}
+        if current.get("status") == "complete":
+            return False
+
         self.db.table("curriculum_weeks").update(
             {"status": "complete"}
         ).eq("id", week_id).execute()
+        return True

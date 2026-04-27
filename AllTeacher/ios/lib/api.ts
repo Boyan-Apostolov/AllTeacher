@@ -138,6 +138,7 @@ export type ExerciseFeedback = {
   verdict: "correct" | "partial" | "incorrect" | "reviewed";
   feedback: string;
   weak_areas: string[];
+  strengths?: string[];
   next_focus: string;
 };
 
@@ -165,6 +166,103 @@ export type GenerateExercisesResponse = {
 export type SubmitExerciseResponse = ExerciseFeedback & {
   id: string;
   status: "evaluated";
+};
+
+// --- Tracker / Adapter (progress dashboard + re-plan) ---
+
+export type StreakSummary = {
+  current_days: number;
+  best_days: number;
+  last_active: string | null;
+};
+
+export type ActivityDay = {
+  date: string;       // ISO yyyy-mm-dd
+  active: boolean;
+};
+
+export type TagStat = {
+  tag: string;
+  count: number;
+};
+
+export type DashboardCurriculumRow = {
+  id: string;
+  topic: string | null;
+  goal: string | null;
+  domain: string | null;
+  level: string | null;
+  assessor_status: string | null;
+  planner_status: string | null;
+  sessions_total: number;
+  sessions_completed: number;
+  exercises_total: number;
+  exercises_completed: number;
+  avg_score: number | null;
+  last_active_at: string | null;
+  replan_count: number;
+  current_week: number | null;
+  next_milestone: string | null;
+};
+
+export type DashboardTotals = {
+  curricula: number;
+  sessions_total: number;
+  sessions_completed: number;
+  exercises_total: number;
+  exercises_completed: number;
+  avg_score: number | null;
+};
+
+export type DashboardSummary = {
+  streak: StreakSummary;
+  activity: ActivityDay[];
+  totals: DashboardTotals;
+  top_weak_areas: TagStat[];
+  top_strengths: TagStat[];
+  curricula: DashboardCurriculumRow[];
+};
+
+export type WeekProgress = {
+  id: string;
+  week_number: number | null;
+  title: string | null;
+  status: string | null;
+  is_bonus: boolean;
+  exercises_total: number;
+  exercises_completed: number;
+  avg_score: number | null;
+};
+
+export type CurriculumProgressDetail = {
+  id: string;
+  topic: string | null;
+  goal: string | null;
+  domain: string | null;
+  level: string | null;
+  replan_count: number;
+  last_active_at: string | null;
+  totals: {
+    sessions_total: number;
+    sessions_completed: number;
+    exercises_total: number;
+    exercises_completed: number;
+    avg_score: number | null;
+  };
+  weeks: WeekProgress[];
+  top_weak_areas: TagStat[];
+  top_strengths: TagStat[];
+  streak: StreakSummary;
+  activity: ActivityDay[];
+};
+
+export type ReplanResponse = {
+  changed: boolean;
+  reason?: string;
+  summary_note?: string;
+  rewritten_weeks?: number;
+  added_bonus_weeks?: number;
+  total_weeks?: number;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -280,6 +378,25 @@ export const api = {
         body: JSON.stringify({ submission }),
       },
     ),
+
+  // --- Tracker / Adapter ---
+
+  getDashboard: (token: string) =>
+    request<DashboardSummary>("/curriculum/progress", {
+      headers: authHeaders(token),
+    }),
+
+  getCurriculumProgress: (token: string, curriculumId: string) =>
+    request<CurriculumProgressDetail>(
+      `/curriculum/${curriculumId}/progress`,
+      { headers: authHeaders(token) },
+    ),
+
+  replan: (token: string, curriculumId: string) =>
+    request<ReplanResponse>(`/curriculum/${curriculumId}/replan`, {
+      method: "POST",
+      headers: authHeaders(token),
+    }),
 };
 
 export { BASE_URL };

@@ -148,3 +148,29 @@ export const WEEK_GRADIENTS: Array<{ from: string; to: string }> = [
 export function weekGradient(index: number): { from: string; to: string } {
   return WEEK_GRADIENTS[index % WEEK_GRADIENTS.length];
 }
+
+/** Format a 0..1 score as a percentage string. Empty string for null. */
+export function formatScorePct(score: number | null | undefined): string {
+  if (score === null || score === undefined || Number.isNaN(score)) return "";
+  return `${Math.round(score * 100)}%`;
+}
+
+/** Friendly "2 hours ago", "yesterday", "Apr 12" rendering of an ISO ts. */
+export function formatRelative(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ts = new Date(iso).getTime();
+  if (Number.isNaN(ts)) return "—";
+  const diffMs = Date.now() - ts;
+  const mins = Math.round(diffMs / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}

@@ -21,6 +21,7 @@ import {
   type AssessorQuestion,
   type AssessorStepResponse,
   type AssessorSummary,
+  type CurriculumProgressDetail,
   type PlanOverview,
   type WeekRow,
 } from "@/lib/api";
@@ -30,6 +31,7 @@ import {
   QuestionView,
   SummaryView,
 } from "@/components/curriculum";
+import { ProgressStrip } from "@/components/progress";
 import {
   LoadingBlock,
   MessageBox,
@@ -56,6 +58,10 @@ export default function CurriculumScreen() {
   const [plan, setPlan] = useState<PlanOverview | null>(null);
   const [weeks, setWeeks] = useState<WeekRow[] | null>(null);
   const [planning, setPlanning] = useState(false);
+
+  const [progress, setProgress] =
+    useState<CurriculumProgressDetail | null>(null);
+  const [replanning, setReplanning] = useState(false);
 
   useEffect(() => {
     if (!id || !session?.access_token) return;
@@ -115,16 +121,24 @@ export default function CurriculumScreen() {
     };
   }, [id, session?.access_token]);
 
-  // Refresh weeks when the screen regains focus, so completed sessions
-  // show their new status without forcing the user to leave and re-enter.
+  // Refresh weeks + progress when the screen regains focus, so completed
+  // sessions show their new status without forcing the user to leave and
+  // re-enter.
   useFocusEffect(
     useCallback(() => {
       if (!id || !session?.access_token || !plan) return;
       let cancelled = false;
+      const token = session.access_token;
       api
-        .getWeeks(session.access_token, id)
+        .getWeeks(token, id)
         .then((w) => {
           if (!cancelled) setWeeks(w.weeks);
+        })
+        .catch(() => {});
+      api
+        .getCurriculumProgress(token, id)
+        .then((p) => {
+          if (!cancelled) setProgress(p);
         })
         .catch(() => {});
       return () => {
@@ -159,6 +173,30 @@ export default function CurriculumScreen() {
       setError((e as Error).message);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const replan = async () => {
+    if (!id || !session?.access_token) return;
+    setReplanning(true);
+    setError(null);
+    try {
+      const token = session.access_token;
+      await api.replan(token, id);
+      // Refresh the week list + progress strip so the new bonus / rewritten
+      // weeks show up immediately.
+      try {
+        const w = await api.getWeeks(token, id);
+        setWeeks(w.weeks);
+      } catch {}
+      try {
+        const p = await api.getCurriculumProgress(token, id);
+        setProgress(p);
+      } catch {}
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setReplanning(false);
     }
   };
 
@@ -224,16 +262,26 @@ export default function CurriculumScreen() {
         {loading ? (
           <LoadingBlock label="Loading…" />
         ) : plan ? (
-          <PlanView
-            plan={plan}
-            weeks={weeks ?? []}
-            onStartSession={(weekId) =>
-              router.push({
-                pathname: "/curriculum/session",
-                params: { curriculumId: id, weekId },
-              })
-            }
-          />
+          <>
+            {progress ? (
+              <ProgressStrip
+                detail={progress}
+                replanning={replanning}
+                onReplan={replan}
+                onOpenDashboard={() => router.push("/progress")}
+              />
+            ) : null}
+            <PlanView
+              plan={plan}
+              weeks={weeks ?? []}
+              onStartSession={(weekId) =>
+                router.push({
+                  pathname: "/curriculum/session",
+                  params: { curriculumId: id, weekId },
+                })
+              }
+            />
+          </>
         ) : summary ? (
           <SummaryView
             summary={summary}

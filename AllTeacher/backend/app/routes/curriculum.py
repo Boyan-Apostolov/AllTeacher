@@ -6,7 +6,10 @@ logic lives in `app.agents.orchestrator`.
 
 POST   /curriculum                        create curriculum + kick off Assessor
 GET    /curriculum                        list user's curricula
+GET    /curriculum/progress               dashboard summary (across all rows)
 GET    /curriculum/<id>                   fetch curriculum state
+GET    /curriculum/<id>/progress          per-curriculum drilldown
+POST   /curriculum/<id>/replan            explicit Adapter re-plan
 DELETE /curriculum/<id>                   delete curriculum
 POST   /curriculum/<id>/assessor          submit an answer, get next Q or summary
 POST   /curriculum/<id>/plan              run Planner, persist plan + week rows
@@ -146,6 +149,52 @@ def submit_exercise(exercise_id):
             user_id=g.user_id,
             exercise_id=exercise_id,
             submission=submission,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
+
+
+# ---------- tracker / adapter endpoints ----------
+
+@bp.get("/progress")
+@require_auth
+def progress_summary():
+    """Global progress dashboard — streak, totals, top tags, per-curriculum
+    rollup. See `tracker.dashboard_summary` for the response shape."""
+    try:
+        payload = _orch().dashboard_summary(user_id=g.user_id)
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
+
+
+@bp.get("/<curriculum_id>/progress")
+@require_auth
+def curriculum_progress_route(curriculum_id):
+    """Per-curriculum progress drilldown — totals, weeks breakdown, top
+    tags, streak. See `tracker.curriculum_progress` for the response shape."""
+    try:
+        payload = _orch().curriculum_progress(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
+
+
+@bp.post("/<curriculum_id>/replan")
+@require_auth
+def replan(curriculum_id):
+    """Explicit "re-plan now" trigger. Returns
+    {changed, summary_note?, rewritten_weeks?, total_weeks?, added_bonus_weeks?}.
+    The submit_exercise auto path runs the same logic at session-complete,
+    fail-soft."""
+    try:
+        payload = _orch().run_adapter(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
         )
     except OrchestratorError as e:
         return _orch_error(e)
