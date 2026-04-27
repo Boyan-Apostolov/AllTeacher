@@ -44,6 +44,7 @@ class _ExercisesMixin:
         curriculum_id: str,
         week_id: str | None = None,
         count: int = 5,
+        module_index: int | None = None,
     ) -> ExercisesPayload:
         """Materialise one session worth of exercises for a week.
 
@@ -62,6 +63,12 @@ class _ExercisesMixin:
           3. Each delivered exercise gets a per-user `exercises` row
              pointing back at its `bank_id` so submission stats stay
              scoped to the user but the content stays shared.
+
+        If `module_index` is provided we skip the bank entirely and ask
+        the writer to focus on that single planner module. This is the
+        path used by the new lesson→exercises flow, where each batch is
+        scoped to one concept and tagged with that module_index so the
+        iOS session screen can reassemble the per-concept loop.
         """
         row = self._load_curriculum(curriculum_id, user_id)
         if row.get("planner_status") != "complete":
@@ -90,8 +97,22 @@ class _ExercisesMixin:
             row.get("recent_weak_areas") or []
         )
 
-        # 1. Bank lookup.
-        if is_first_session:
+        # Resolve the focused module (if any). When the iOS session screen
+        # is in per-concept mode, each call asks for exercises targeting
+        # one specific planner module — we skip the cross-week bank then
+        # so we don't return content tagged for a different module.
+        modules = (week_plan.get("modules") or [])
+        focused_module: dict[str, Any] | None = None
+        if module_index is not None:
+            if module_index < 0 or module_index >= len(modules):
+                raise NotFound(code="module_index_out_of_range")
+            focused_module = modules[module_index]
+
+        # 1. Bank lookup. Skipped when a module is explicitly requested —
+        # the bank isn't keyed by module_index today.
+        if focused_module is not None:
+            cached: list[dict[str, Any]] = []
+        elif is_first_session:
             cached = exercise_bank.find_first_session(
                 self.db,
                 domain=domain,
@@ -135,6 +156,20 @@ class _ExercisesMixin:
                 if t:
                     seen_titles.append(t)
 
+            # If we're focusing on one concept, bias the writer toward it
+            # by handing it just that module + a derived focus list, so
+            # every generated item drills the same idea instead of
+            # spreading across the week.
+            if focused_module is not None:
+                writer_modules = [focused_module]
+                derived_focus = [
+                    focused_module.get("title") or "",
+                ] + list(week_plan.get("exercise_focus") or [])
+                writer_focus = [t for t in derived_focus if t]
+            else:
+                writer_modules = week_plan.get("modules") or []
+                writer_focus = week_plan.get("exercise_focus") or []
+
             payload = {
                 "goal": row.get("goal") or row.get("topic") or "",
                 "native_language": row.get("native_language") or "en",
@@ -146,8 +181,8 @@ class _ExercisesMixin:
                 "week_number": week_number,
                 "week_title": week_plan.get("title") or "",
                 "week_objective": week_plan.get("objective") or "",
-                "week_modules": week_plan.get("modules") or [],
-                "exercise_focus": week_plan.get("exercise_focus") or [],
+                "week_modules": writer_modules,
+                "exercise_focus": writer_focus,
                 "seen_titles": seen_titles,
                 "recent_weak_areas": (
                     [] if is_first_session else recent_weak_areas
@@ -169,8 +204,12 @@ class _ExercisesMixin:
                 result = {"exercises": []}
 
             new_exercises = result.get("exercises") or []
-            if new_exercises:
-                # Write back to the bank.
+            bank_by_title: dict[str, str] = {}
+            if new_exercises and focused_module is None:
+                # Write back to the bank — but only for week-level
+                # generations. Per-module batches stay per-user so the
+                # bank's (week_number, weak_areas) keying isn't muddied
+                # with content tagged for one specific module.
                 bank_rows = exercise_bank.save_batch(
                     self.db,
                     exercises=new_exercises,
@@ -186,7 +225,6 @@ class _ExercisesMixin:
                 )
                 # Map content → bank id for the rows we successfully
                 # inserted (some may have been swallowed as duplicates).
-                bank_by_title: dict[str, str] = {}
                 for br in bank_rows:
                     title = (br.get("content_json") or {}).get(
                         "title"
@@ -194,10 +232,10 @@ class _ExercisesMixin:
                     if title and br.get("id"):
                         bank_by_title[title] = br["id"]
 
-                for ex in new_exercises:
-                    delivered.append(
-                        (ex, bank_by_title.get(ex.get("title") or ""))
-                    )
+            for ex in new_exercises:
+                delivered.append(
+                    (ex, bank_by_title.get(ex.get("title") or ""))
+                )
 
         if not delivered:
             return {
@@ -207,13 +245,19 @@ class _ExercisesMixin:
             }
 
         # 3. Persist per-user rows pointing at the bank.
+        # If a module was explicitly requested, every inserted row carries
+        # that module_index so the iOS session screen can group its batch
+        # under the right concept. Otherwise we fall back to the in-batch
+        # ordinal (the existing week-level behaviour).
         rows_to_insert = [
             {
                 "curriculum_id": curriculum_id,
                 "week_id": week_row["id"],
                 "type": (content.get("type") or "short_answer"),
                 "content_json": content,
-                "module_index": idx,
+                "module_index": (
+                    module_index if module_index is not None else idx
+                ),
                 "status": "pending",
                 "seen": False,
                 "bank_id": bank_id,

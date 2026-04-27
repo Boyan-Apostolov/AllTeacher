@@ -16,6 +16,13 @@ class Config:
 
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5.4-nano")
+    # Smaller/faster model for agents whose work doesn't benefit from
+    # top-tier reasoning (e.g. the Explainer's short lessons). Falls back
+    # to OPENAI_MODEL if unset so existing deploys keep current behaviour.
+    # Recommended setting: gpt-4o-mini.
+    OPENAI_FAST_MODEL = os.getenv("OPENAI_FAST_MODEL") or os.getenv(
+        "OPENAI_MODEL", "gpt-5.4-nano"
+    )
 
     REVENUECAT_WEBHOOK_SECRET = os.getenv("REVENUECAT_WEBHOOK_SECRET", "")
 

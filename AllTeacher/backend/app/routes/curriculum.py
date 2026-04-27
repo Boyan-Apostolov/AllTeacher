@@ -14,6 +14,9 @@ DELETE /curriculum/<id>                   delete curriculum
 POST   /curriculum/<id>/assessor          submit an answer, get next Q or summary
 POST   /curriculum/<id>/plan              run Planner, persist plan + week rows
 GET    /curriculum/<id>/weeks             list curriculum_weeks rows
+POST   /curriculum/<id>/lessons           run Explainer for one module (cached)
+GET    /curriculum/<id>/lessons           list lessons (filtered by week_id)
+POST   /curriculum/lessons/<lid>/seen     mark a lesson as seen
 POST   /curriculum/<id>/exercises         run Exercise Writer for a given week
 GET    /curriculum/<id>/exercises         list exercises (filtered by week_id)
 POST   /curriculum/exercises/<eid>/submit run Evaluator on a submission
@@ -105,11 +108,79 @@ def generate_plan(curriculum_id):
     return jsonify(payload), 200
 
 
+@bp.post("/<curriculum_id>/lessons")
+@require_auth
+def generate_lesson(curriculum_id):
+    """Body: {week_id?: str, module_index?: int}
+    Returns the lesson row for one (week, module). Cached — repeat calls
+    for the same module return the same row without an LLM hit. If
+    `module_index` is omitted, returns the next module the user hasn't
+    yet marked seen.
+    """
+    body = request.get_json(silent=True) or {}
+    week_id = body.get("week_id") or None
+    raw_idx = body.get("module_index")
+    if raw_idx is None or raw_idx == "":
+        module_index = None
+    else:
+        try:
+            module_index = int(raw_idx)
+        except (TypeError, ValueError):
+            return jsonify({"error": "module_index_invalid"}), 400
+
+    try:
+        payload = _orch().generate_lesson(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
+            week_id=week_id,
+            module_index=module_index,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
+
+
+@bp.get("/<curriculum_id>/lessons")
+@require_auth
+def list_lessons(curriculum_id):
+    """Query: ?week_id=<uuid> filters to one week.
+    Returns: {lessons: [...]}
+    """
+    week_id = request.args.get("week_id") or None
+    try:
+        rows = _orch().list_lessons(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
+            week_id=week_id,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify({"lessons": rows}), 200
+
+
+@bp.post("/lessons/<lesson_id>/seen")
+@require_auth
+def mark_lesson_seen(lesson_id):
+    """Idempotent — flips the lesson's status to 'seen' and stamps seen_at
+    on the first call. Returns the updated lesson row."""
+    try:
+        payload = _orch().mark_lesson_seen(
+            user_id=g.user_id,
+            lesson_id=lesson_id,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
+
+
 @bp.post("/<curriculum_id>/exercises")
 @require_auth
 def generate_exercises(curriculum_id):
-    """Body: {week_id?: str, count?: int}
+    """Body: {week_id?: str, count?: int, module_index?: int}
     Runs the Exercise Writer for one week and persists the new exercises.
+    Pass `module_index` to focus the batch on a single planner module
+    (the lesson→exercises flow does this so each batch drills the
+    concept the user just read about).
     Returns: {curriculum_id, week_id, exercises: [...]}
     """
     body = request.get_json(silent=True) or {}
@@ -120,12 +191,22 @@ def generate_exercises(curriculum_id):
         count = 5
     count = max(1, min(8, count))
 
+    raw_idx = body.get("module_index")
+    if raw_idx is None or raw_idx == "":
+        module_index = None
+    else:
+        try:
+            module_index = int(raw_idx)
+        except (TypeError, ValueError):
+            return jsonify({"error": "module_index_invalid"}), 400
+
     try:
         payload = _orch().generate_exercises(
             user_id=g.user_id,
             curriculum_id=curriculum_id,
             week_id=week_id,
             count=count,
+            module_index=module_index,
         )
     except OrchestratorError as e:
         return _orch_error(e)

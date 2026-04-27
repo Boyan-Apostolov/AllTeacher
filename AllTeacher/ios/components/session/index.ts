@@ -10,5 +10,6 @@ export { ExerciseView } from "./ExerciseView";
 export { FeedbackCard } from "./FeedbackCard";
 export { FinishedView } from "./FinishedView";
 export { Flashcard } from "./Flashcard";
+export { LessonView } from "./LessonView";
 export { MultipleChoice } from "./MultipleChoice";
 export { ShortAnswer } from "./ShortAnswer";

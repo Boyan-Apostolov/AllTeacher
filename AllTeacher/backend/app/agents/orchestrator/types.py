@@ -36,9 +36,22 @@ class ExerciseEvalPayload(TypedDict):
     status: str
 
 
+class LessonPayload(TypedDict, total=False):
+    id: str
+    curriculum_id: str
+    week_id: str
+    module_index: int
+    concept_title: str
+    content_json: dict[str, Any]
+    status: str          # 'pending' | 'ready' | 'seen'
+    seen_at: str | None
+    created_at: str | None
+
+
 __all__ = [
     "AssessorStepPayload",
     "PlanPayload",
     "ExercisesPayload",
     "ExerciseEvalPayload",
+    "LessonPayload",
 ]

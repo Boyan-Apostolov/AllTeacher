@@ -176,6 +176,9 @@ Currently:
 - `003_time_budget_per_day.sql` — renames `time_budget_mins_per_week` → `time_budget_mins_per_day` (the Assessor now asks per-day, not per-week).
 - `004_planner.sql` — adds `plan_json` (top-level overview: title, summary, phases, total_weeks) and `planner_status` to `curricula`. Per-week detail goes into `curriculum_weeks.plan_json`.
 - `005_exercises.sql` — extends `exercises` with `module_index`, `status` enum (`pending` / `submitted` / `evaluated` / `skipped`), `submission_json`, `feedback_json`, `evaluated_at`, plus indexes on `(curriculum_id, status)` and `(week_id, status)`. Used by the Exercise Writer + Evaluator pipeline.
+- `006_exercise_bank.sql` — global `exercise_bank` table for caching/dedup across users (keyed by domain/level/target_language/week_number/weak_areas). Adds `exercises.bank_id` and `curricula.recent_weak_areas`.
+- `007_tracker.sql` — Tracker/Adapter columns on `curricula` (`recent_strengths`, `last_active_at`, replan bookkeeping).
+- `008_lessons.sql` — `lessons` table for the Explainer agent (one row per planner module: `concept_title`, `content_json`, `status` ∈ `pending`/`ready`/`seen`). Powers the lesson→exercises flow.
 
 For each file: open **SQL Editor → New query**, paste the contents, click **Run**.
 
@@ -280,7 +283,7 @@ iOS Simulator (Expo) ──/health──▶ Flask (:8000) ──▶ Config check
 
 ### Architecture: master Orchestrator
 
-All agent calls go through `backend/app/agents/orchestrator.py`. Routes are thin — they translate HTTP into orchestrator intents (`start_curriculum`, `submit_assessor_answer`, `generate_plan`, `generate_exercises`, `submit_exercise`, …) and translate orchestrator results / errors back into JSON. Subagents (`assessor.py`, `planner.py`, `exercise_writer.py`, `evaluator.py`, future `tracker.py`, `adapter.py`) stay pure: structured input → structured output, no DB or HTTP.
+All agent calls go through `backend/app/agents/orchestrator/` (composed from per-phase mixins: `_assessment.py`, `_lessons.py`, `_exercises.py`, `_tracker.py`). Routes are thin — they translate HTTP into orchestrator intents (`start_curriculum`, `submit_assessor_answer`, `generate_plan`, `generate_lesson`, `mark_lesson_seen`, `generate_exercises`, `submit_exercise`, `dashboard_summary`, `run_adapter`, …) and translate orchestrator results / errors back into JSON. Subagents (`assessor.py`, `planner.py`, `explainer.py`, `exercise_writer.py`, `evaluator.py`, `tracker.py`, `adapter.py`) stay pure: structured input → structured output, no DB or HTTP.
 
 ```
 iOS  ──HTTP──▶  Flask route  ──intent──▶  Orchestrator  ──▶  Subagent (Assessor / Planner / …)
@@ -297,7 +300,16 @@ Add a new subagent by dropping a new module under `app/agents/` and wiring it in
 - Tap **Start new curriculum**, type any goal in any language. The Assessor asks 8–10 MCQs in your native language and ends with a structured summary (domain / level / learning style / time per day / target language).
 - After the assessment, tap **Generate my plan**. The Planner returns a week-by-week curriculum (title, summary, phases, weeks with modules / objective / milestone / daily minutes), persisted to `curricula.plan_json` + `curriculum_weeks`.
 - Back on Home, the curriculum row shows **Plan ready** and reopens straight into the plan view.
-- On any week card in the plan view, tap **Start session →**. The Exercise Writer generates a small batch of exercises (mix of multiple-choice / flashcards / short-answer / writing prompts) tailored to that week's modules and your level. Submit each one — the Evaluator scores it and gives feedback in your native language. End-of-session shows your average score.
+- On any week card in the plan view, tap **Start session →**. The session now teaches before drilling: for each planner module the Explainer writes a short lesson (concept_title, intro, key points, worked example, pitfalls, next-up) adapted to your level (longer for beginners, terse refresher for advanced), then the Exercise Writer generates a small batch of exercises (mix of multiple-choice / flashcards / short-answer / writing prompts) scoped to that same module so the practice drills the concept you just read. Submit each one — the Evaluator scores it and gives feedback in your native language. The screen advances concept → exercises → next concept → … and ends with the average score.
+
+### Explainer agent — teach before drilling (2026-04-27)
+
+- **New agent** `backend/app/agents/explainer.py` — pure agent, same shape as the existing subagents. Takes one planner module + the user profile (level, native_language, target_language, learning_style, recent_weak_areas) and emits `{concept_title, intro, key_points, example, pitfalls, next_up}`. Length adapts to level via the system prompt: longer scaffolded lessons for beginners, terse refreshers for advanced.
+- **New mixin** `backend/app/agents/orchestrator/_lessons.py` — `generate_lesson`, `mark_lesson_seen`, `list_lessons`. Cached per `(curriculum, week, module_index)` so repeat opens don't burn tokens.
+- **New routes** `POST /curriculum/<id>/lessons`, `GET /curriculum/<id>/lessons`, `POST /curriculum/lessons/<lid>/seen`.
+- **New table** `public.lessons` (see `008_lessons.sql`) — `concept_title`, `content_json`, `status` ∈ `pending`/`ready`/`seen`. Cascades from the parent curriculum and week.
+- **`generate_exercises` extended** with optional `module_index` so each batch is scoped to one concept (the bank is bypassed in that path so per-module content doesn't leak into the cross-user week-keyed cache).
+- **iOS** `ios/components/session/LessonView.tsx` renders the lesson card; `ios/app/curriculum/session.tsx` is now a phase machine — `lesson(module_i) → exercises(module_i) → lesson(i+1) → … → finished`. The "Start exercises →" CTA marks the lesson seen and triggers a per-module exercise generation.
 
 ### UI redesign + prompt trim (2026-04-26)
 
