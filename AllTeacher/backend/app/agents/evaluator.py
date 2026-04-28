@@ -38,6 +38,7 @@ from typing import Any, TypedDict
 from openai import OpenAI
 
 from config import Config
+from app.services import usage_meter
 
 
 # --- types ---
@@ -145,6 +146,12 @@ def evaluate(payload: EvaluatorInput) -> dict[str, Any]:
             },
         },
         temperature=0.1,
+    )
+
+    usage_meter.record(
+        model=Config.OPENAI_MODEL,
+        usage=completion.usage,
+        agent="evaluator",
     )
 
     raw = completion.choices[0].message.content or "{}"

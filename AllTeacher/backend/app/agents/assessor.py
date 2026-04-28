@@ -24,6 +24,7 @@ from typing import Any, Literal, TypedDict
 from openai import OpenAI
 
 from config import Config
+from app.services import usage_meter
 
 
 # --- types ---
@@ -158,6 +159,12 @@ def step(
             },
         },
         temperature=0.4,
+    )
+
+    usage_meter.record(
+        model=Config.OPENAI_MODEL,
+        usage=completion.usage,
+        agent="assessor",
     )
 
     raw = completion.choices[0].message.content or "{}"

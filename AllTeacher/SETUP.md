@@ -179,6 +179,7 @@ Currently:
 - `006_exercise_bank.sql` — global `exercise_bank` table for caching/dedup across users (keyed by domain/level/target_language/week_number/weak_areas). Adds `exercises.bank_id` and `curricula.recent_weak_areas`.
 - `007_tracker.sql` — Tracker/Adapter columns on `curricula` (`recent_strengths`, `last_active_at`, replan bookkeeping).
 - `008_lessons.sql` — `lessons` table for the Explainer agent (one row per planner module: `concept_title`, `content_json`, `status` ∈ `pending`/`ready`/`seen`). Powers the lesson→exercises flow.
+- `009_admin_billing_usage.sql` — `subscriptions` (per-user tier + `monthly_price_cents` for MRR math) and `token_usage_log` (one row per OpenAI call: `agent`, `model`, `prompt_tokens`, `completion_tokens`, `cost_cents`, `created_at`). Powers the admin dashboard.
 
 For each file: open **SQL Editor → New query**, paste the contents, click **Run**.
 
@@ -301,6 +302,33 @@ Add a new subagent by dropping a new module under `app/agents/` and wiring it in
 - After the assessment, tap **Generate my plan**. The Planner returns a week-by-week curriculum (title, summary, phases, weeks with modules / objective / milestone / daily minutes), persisted to `curricula.plan_json` + `curriculum_weeks`.
 - Back on Home, the curriculum row shows **Plan ready** and reopens straight into the plan view.
 - On any week card in the plan view, tap **Start session →**. The session now teaches before drilling: for each planner module the Explainer writes a short lesson (concept_title, intro, key points, worked example, pitfalls, next-up) adapted to your level (longer for beginners, terse refresher for advanced), then the Exercise Writer generates a small batch of exercises (mix of multiple-choice / flashcards / short-answer / writing prompts) scoped to that same module so the practice drills the concept you just read. Submit each one — the Evaluator scores it and gives feedback in your native language. The screen advances concept → exercises → next concept → … and ends with the average score.
+
+### Admin dashboard + per-call cost ledger (2026-04-28)
+
+User asked for an admin view restricted to `boian4934@gmail.com` with totals on users, subscriptions, used API cost and profit-from-subs. Built as a hidden tab inside the iOS app on top of a new always-on token-cost ledger (no historical backfill — we start counting from this deploy).
+
+- **Migration** `009_admin_billing_usage.sql` — adds two tables.
+  - `subscriptions` (one row per user — `user_id` PK referencing `auth.users`, `tier` ∈ free/pro/power, `monthly_price_cents`, `currency` default EUR, `status`, `started_at`, `current_period_end`, `revenuecat_id`). Seeded manually for now; the RevenueCat webhook is still stubbed and will write here once it's wired up.
+  - `token_usage_log` (id, `user_id`, `curriculum_id`, `agent`, `model`, `prompt_tokens`, `completion_tokens`, `cost_cents` numeric(12,4), `created_at`). One row per OpenAI call. Indexed on `created_at`, `(user_id, created_at)`, `(agent, created_at)` so the dashboard time-series queries stay cheap.
+
+- **Usage meter** `backend/app/services/usage_meter.py` — request-scoped via a Python `ContextVar`. `begin(user_id, curriculum_id)` opens the scope; agents call `record(model=..., usage=...)` after each `chat.completions.create`; `flush()` persists all events. We chose this over plumbing `user_id` through every agent's signature because subagents are pure (`{input dict} → {output dict}`) and we want to keep them that way. The meter is best-effort — Supabase insert failures are logged and swallowed; billing telemetry never bubbles into the user-facing response.
+
+- **Pricing table** in `config.py` (`OPENAI_PRICING_USD_PER_1K`) — keyed by model name with a `default` fallback. Costs are stored at write time, so a future price change doesn't retroactively rewrite history. Cost is USD-cents; subscription revenue is EUR-cents — the dashboard treats them as comparable for a rough margin lens (good enough for a one-operator business-health view).
+
+- **Wiring** — `record(...)` called from all six agents (assessor, planner, exercise_writer, evaluator, adapter, explainer) right after the OpenAI completion. `begin(user_id=g.user_id, curriculum_id=request.view_args.get("curriculum_id"))` runs inside `require_auth` so every authenticated route automatically opens a scope; `app.teardown_request` calls `flush()` so the rows persist whether the route returned cleanly or raised.
+
+- **Admin gate** — new decorator `admin_only` in `backend/app/middleware/auth.py`. Checks `g.user_email` against `Config.ADMIN_EMAIL` (default `boian4934@gmail.com`, configurable via env). Returns **404 not_found** instead of 403 so the surface looks indistinguishable from "no such route" for non-admins. Stack order: `@require_auth` first, then `@admin_only`.
+
+- **Admin routes** `backend/app/routes/admin.py` (registered as the `admin` blueprint under `/admin`):
+  - `GET /admin/overview` — single roll-up payload (totals, signups today/7d/30d, DAU/WAU/MAU, sub counts by tier, MRR, today + 30-day cost, 30-day margin).
+  - `GET /admin/users?days=N` — recent users + each user's window cost (capped at top-200 by spend so the iOS list stays small).
+  - `GET /admin/usage?days=N` — daily cost series + per-agent + per-model breakdowns.
+  - `GET /admin/engagement?days=N` — daily distinct active users + total sessions completed.
+  - `GET /admin/profit?months=N` — month-by-month revenue (MRR booked) − cost rollup.
+
+- **iOS — hidden tab** — `useAdmin()` hook in `lib/auth.tsx` returns true only when the logged-in email matches `ADMIN_EMAIL`. The home screen renders an extra "🛠 Admin" pill in the hero CTA row when true; non-admins never see it. Wraps `app/admin.tsx` (the dashboard screen) which loads all five endpoints in parallel, supports pull-to-refresh, and renders KPI tiles, mini bar-charts, and per-agent/per-model spend breakdowns.
+
+- **Configuration** — `ADMIN_EMAIL` (defaults to `boian4934@gmail.com`) and `OPENAI_PRICING_USD_PER_1K` live in `config.py`. The pricing dict has stub entries for the gpt-5.4-* family currently set as defaults — update once real pricing is published.
 
 ### Evaluator language consistency + canonical tag reuse (2026-04-28 patch)
 

@@ -14,7 +14,7 @@ import {
   type CurriculumListItem,
   type HealthResponse,
 } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth, useAdmin } from "@/lib/auth";
 import { CurriculumRow, DiagPill } from "@/components/home";
 import { LoadingBlock, MessageBox } from "@/components/ui";
 import { Gradient } from "@/components/Gradient";
@@ -26,6 +26,7 @@ import { homeStyles as styles } from "./index.styles";
 export default function Home() {
   const router = useRouter();
   const { user, session, signOut } = useAuth();
+  const isAdmin = useAdmin();
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [meOk, setMeOk] = useState<boolean | null>(null);
@@ -139,6 +140,17 @@ export default function Home() {
             >
               <Text style={styles.heroCtaGhostText}>📈 Progress</Text>
             </Pressable>
+            {/* Hidden tab — only the configured ADMIN_EMAIL ever
+                sees this; the backend also 404s the routes for
+                everyone else, so this is purely a UX hint. */}
+            {isAdmin ? (
+              <Pressable
+                style={styles.heroCtaGhost}
+                onPress={() => router.push("/admin")}
+              >
+                <Text style={styles.heroCtaGhostText}>🛠 Admin</Text>
+              </Pressable>
+            ) : null}
           </View>
         </Gradient>
 

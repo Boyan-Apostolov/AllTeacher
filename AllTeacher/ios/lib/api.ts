@@ -296,6 +296,74 @@ export type ReplanResponse = {
   total_weeks?: number;
 };
 
+// --- Admin dashboard ----------------------------------------------------
+
+export type AdminOverview = {
+  users: {
+    total: number;
+    signups_today: number;
+    signups_7d: number;
+    signups_30d: number;
+    dau: number;
+    wau: number;
+    mau: number;
+  };
+  subscriptions: {
+    by_tier: { free: number; pro: number; power: number };
+    paying: number;
+    mrr_cents: number;
+    currency: string;
+  };
+  cost: {
+    today_cents: number;
+    last_30d_cents: number;
+    currency: string;
+  };
+  margin: { last_30d_cents: number };
+  tier_prices: { free: number; pro: number; power: number };
+};
+
+export type AdminUser = {
+  id: string | null;
+  email: string | null;
+  created_at: string | null;
+  tier: string;
+  status: string;
+  cost_cents_window: number;
+};
+
+export type AdminUsageAgent = {
+  agent: string;
+  cost_cents: number;
+  calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+};
+
+export type AdminUsage = {
+  days: number;
+  total_cost_cents: number;
+  currency: string;
+  series: { date: string; value: number }[];
+  by_agent: AdminUsageAgent[];
+  by_model: { model: string; cost_cents: number; calls: number }[];
+};
+
+export type AdminEngagement = {
+  days: number;
+  active_users_series: { date: string; value: number }[];
+  sessions_completed_total: number;
+};
+
+export type AdminProfitMonth = {
+  month: string;
+  revenue_cents: number;
+  cost_cents: number;
+  margin_cents: number;
+};
+
+export type AdminProfit = { months: AdminProfitMonth[] };
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...init,
@@ -464,6 +532,32 @@ export const api = {
   replan: (token: string, curriculumId: string) =>
     request<ReplanResponse>(`/curriculum/${curriculumId}/replan`, {
       method: "POST",
+      headers: authHeaders(token),
+    }),
+
+  // --- Admin (boian4934@gmail.com only — backend returns 404 otherwise) ---
+
+  adminOverview: (token: string) =>
+    request<AdminOverview>("/admin/overview", { headers: authHeaders(token) }),
+
+  adminUsers: (token: string, days = 30) =>
+    request<{ users: AdminUser[]; days: number }>(
+      `/admin/users?days=${days}`,
+      { headers: authHeaders(token) },
+    ),
+
+  adminUsage: (token: string, days = 30) =>
+    request<AdminUsage>(`/admin/usage?days=${days}`, {
+      headers: authHeaders(token),
+    }),
+
+  adminEngagement: (token: string, days = 30) =>
+    request<AdminEngagement>(`/admin/engagement?days=${days}`, {
+      headers: authHeaders(token),
+    }),
+
+  adminProfit: (token: string, months = 6) =>
+    request<AdminProfit>(`/admin/profit?months=${months}`, {
       headers: authHeaders(token),
     }),
 };

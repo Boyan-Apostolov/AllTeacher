@@ -20,6 +20,7 @@ from jwt import PyJWKClient
 from flask import request, jsonify, g
 
 from config import Config
+from app.services import usage_meter
 
 
 _jwks_client: PyJWKClient | None = None
@@ -93,6 +94,51 @@ def require_auth(fn):
         g.user_id = payload.get("sub")
         g.user_email = payload.get("email")
         g.jwt_payload = payload
+
+        # Open a per-request usage scope so any agent call on this
+        # request stream lands in the right user's ledger. The matching
+        # flush() runs in app.teardown_request — that fires whether or
+        # not the route returns successfully, so we don't leak rows.
+        # Best-effort; never raises into the request path.
+        try:
+            curriculum_id = (
+                request.view_args.get("curriculum_id")
+                if request.view_args
+                else None
+            )
+            usage_meter.begin(
+                user_id=g.user_id,
+                curriculum_id=curriculum_id,
+            )
+        except Exception:
+            pass
+
+        return fn(*args, **kwargs)
+
+    return wrapped
+
+
+def admin_only(fn):
+    """Gate that requires the caller to be the configured ADMIN_EMAIL.
+
+    Stacks ON TOP of `require_auth` — order matters:
+
+        @bp.route("/admin/overview")
+        @require_auth
+        @admin_only
+        def overview(): ...
+
+    `require_auth` runs first, populates g.user_email; then admin_only
+    checks the email against Config.ADMIN_EMAIL. We deliberately return
+    404 (not 403) so a curious non-admin can't even tell the route
+    exists — keeps the surface boring for anyone scanning.
+    """
+    @wraps(fn)
+    def wrapped(*args, **kwargs):
+        email = (getattr(g, "user_email", None) or "").lower().strip()
+        admin = (Config.ADMIN_EMAIL or "").lower().strip()
+        if not admin or email != admin:
+            return jsonify({"error": "not_found"}), 404
         return fn(*args, **kwargs)
 
     return wrapped

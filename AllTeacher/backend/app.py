@@ -15,6 +15,8 @@ from app.routes.auth import bp as auth_bp
 from app.routes.curriculum import bp as curriculum_bp
 from app.routes.session import bp as session_bp
 from app.routes.webhooks import bp as webhooks_bp
+from app.routes.admin import bp as admin_bp
+from app.services import usage_meter
 
 
 def create_app() -> Flask:
@@ -29,10 +31,20 @@ def create_app() -> Flask:
     app.register_blueprint(curriculum_bp)
     app.register_blueprint(session_bp)
     app.register_blueprint(webhooks_bp)
+    app.register_blueprint(admin_bp)
 
     @app.get("/")
     def index():
         return {"service": "allteacher-backend", "docs": "/health"}
+
+    @app.teardown_request
+    def _flush_usage_meter(exc):
+        # Persist any token_usage_log rows recorded during this request.
+        # `require_auth` opens the scope; we close it here so it fires
+        # whether the route returned cleanly or raised. The meter
+        # internally swallows DB errors so a flaky Supabase call can't
+        # take down the response.
+        usage_meter.flush()
 
     return app
 

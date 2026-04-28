@@ -26,6 +26,41 @@ class Config:
 
     REVENUECAT_WEBHOOK_SECRET = os.getenv("REVENUECAT_WEBHOOK_SECRET", "")
 
+    # Admin dashboard gating. Only requests whose verified Supabase JWT
+    # email matches ADMIN_EMAIL get through the @admin_only decorator.
+    # Single-account by design — there is one operator (us). Add a
+    # comma-separated parser later if we ever need a small allowlist.
+    ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "boian4934@gmail.com")
+
+    # OpenAI pricing per 1K tokens (USD), used by the usage_meter to
+    # write `cost_cents` on the token_usage_log row. Numbers come from
+    # the public pricing page; update here if OpenAI changes them — the
+    # ledger keeps the historical cost as recorded, so a price change
+    # only affects calls made after the deploy.
+    #
+    # Fallback ('default') applies to any model name we haven't mapped
+    # explicitly — keeps the meter from blowing up on a new model id.
+    OPENAI_PRICING_USD_PER_1K: dict[str, dict[str, float]] = {
+        "gpt-4o":           {"prompt": 0.0025, "completion": 0.010},
+        "gpt-4o-mini":      {"prompt": 0.00015, "completion": 0.0006},
+        "gpt-4.1":          {"prompt": 0.002,  "completion": 0.008},
+        "gpt-4.1-mini":     {"prompt": 0.0004, "completion": 0.0016},
+        "gpt-4.1-nano":     {"prompt": 0.0001, "completion": 0.0004},
+        # Speculative placeholders for the gpt-5.4-* family currently set
+        # as defaults — overwrite once real pricing is published.
+        "gpt-5.4-nano":     {"prompt": 0.0001, "completion": 0.0004},
+        "gpt-5.4-mini":     {"prompt": 0.0004, "completion": 0.0016},
+        "default":          {"prompt": 0.001,  "completion": 0.004},
+    }
+
+    # Tier list rendered to the admin dashboard. Keep in sync with the
+    # `subscriptions.tier` CHECK constraint and the iOS paywall.
+    TIER_PRICES_EUR_CENTS: dict[str, int] = {
+        "free":  0,
+        "pro":   900,
+        "power": 1900,
+    }
+
     @classmethod
     def is_configured(cls) -> dict:
         """Quick check for /health to show which integrations are wired."""

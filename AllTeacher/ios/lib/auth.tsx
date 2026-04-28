@@ -68,3 +68,13 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
   return ctx;
 }
+
+// Single-operator admin gate. Backend ALSO checks (via @admin_only +
+// ADMIN_EMAIL) so this is purely a UX hint — non-admins can never
+// load /admin/* even if they craft a request manually.
+export const ADMIN_EMAIL = "boian4934@gmail.com";
+
+export function useAdmin(): boolean {
+  const { user } = useAuth();
+  return (user?.email ?? "").toLowerCase() === ADMIN_EMAIL.toLowerCase();
+}

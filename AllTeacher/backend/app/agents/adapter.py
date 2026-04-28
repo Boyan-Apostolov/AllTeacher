@@ -43,6 +43,7 @@ from typing import Any, TypedDict
 from openai import OpenAI
 
 from config import Config
+from app.services import usage_meter
 
 
 # --- types ---
@@ -184,6 +185,12 @@ def adapt(payload: AdapterInput) -> dict[str, Any]:
             },
         },
         temperature=0.4,
+    )
+
+    usage_meter.record(
+        model=Config.OPENAI_MODEL,
+        usage=completion.usage,
+        agent="adapter",
     )
 
     raw = completion.choices[0].message.content or "{}"

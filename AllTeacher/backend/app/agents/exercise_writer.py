@@ -48,6 +48,7 @@ from typing import Any, TypedDict
 from openai import OpenAI
 
 from config import Config
+from app.services import usage_meter
 
 
 # --- types ---
@@ -209,6 +210,12 @@ def write_batch(payload: WriterInput) -> dict[str, Any]:
             },
         },
         temperature=0.7,
+    )
+
+    usage_meter.record(
+        model=Config.OPENAI_MODEL,
+        usage=completion.usage,
+        agent="exercise_writer",
     )
 
     raw = completion.choices[0].message.content or "{}"
