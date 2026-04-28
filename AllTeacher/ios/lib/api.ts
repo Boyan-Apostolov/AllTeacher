@@ -103,6 +103,9 @@ export type WeekRow = {
 
 // --- Exercises (Exercise Writer + Evaluator) ---
 
+// `essay_prompt` is a legacy type — new generations only emit the three
+// types above. The iOS renderer still routes it to ShortAnswer so old
+// rows in the DB keep rendering after the schema change.
 export type ExerciseType =
   | "multiple_choice"
   | "flashcard"
@@ -122,9 +125,10 @@ export type ExerciseContent = {
   // short_answer
   expected?: string;
   rubric?: string[];
-  // essay_prompt
+  // legacy essay_prompt — kept for old rows
   expected_length?: string;
-  // all
+  // legacy — Exercise Writer no longer emits this; per-answer "why this
+  // missed the goal" comes from ExerciseFeedback.gap instead
   explanation?: string;
 };
 
@@ -137,6 +141,10 @@ export type ExerciseFeedback = {
   score: number;
   verdict: "correct" | "partial" | "incorrect" | "reviewed";
   feedback: string;
+  // Per-answer explanation of *why* the user's submission missed the
+  // goal. Empty for verdict='correct' / score≥0.9. Replaces the static
+  // ExerciseContent.explanation that used to repeat the prompt.
+  gap?: string;
   weak_areas: string[];
   strengths?: string[];
   next_focus: string;
@@ -381,6 +389,9 @@ export const api = {
       week_id?: string;
       count?: number;
       module_index?: number;
+      // Bonus drill — every item targets one of the user's
+      // recent_weak_areas tags. Rows are inserted with module_index=null.
+      focus_weak_areas?: boolean;
     } = {},
   ) =>
     request<GenerateExercisesResponse>(

@@ -45,6 +45,7 @@ class _ExercisesMixin:
         week_id: str | None = None,
         count: int = 5,
         module_index: int | None = None,
+        focus_weak_areas: bool = False,
     ) -> ExercisesPayload:
         """Materialise one session worth of exercises for a week.
 
@@ -69,6 +70,12 @@ class _ExercisesMixin:
         path used by the new lesson→exercises flow, where each batch is
         scoped to one concept and tagged with that module_index so the
         iOS session screen can reassemble the per-concept loop.
+
+        If `focus_weak_areas` is True we ALSO skip the bank, drop the
+        per-module focus, and tell the writer this is a bonus drill —
+        every item targets one of the user's recent_weak_areas. The rows
+        get module_index=null so the iOS session screen can flag them as
+        bonus content rather than mixing them into the per-concept loop.
         """
         row = self._load_curriculum(curriculum_id, user_id)
         if row.get("planner_status") != "complete":
@@ -108,9 +115,17 @@ class _ExercisesMixin:
                 raise NotFound(code="module_index_out_of_range")
             focused_module = modules[module_index]
 
+        # Bonus weak-area drill — generate-only path, never bank-cached
+        # (the bank isn't keyed by per-user weak_areas tag sets so caching
+        # would mismatch other users). Falls back to a normal week-focused
+        # batch if the user has no recent_weak_areas yet.
+        if focus_weak_areas and not recent_weak_areas:
+            focus_weak_areas = False
+
         # 1. Bank lookup. Skipped when a module is explicitly requested —
-        # the bank isn't keyed by module_index today.
-        if focused_module is not None:
+        # the bank isn't keyed by module_index today. Also skipped for
+        # bonus drills (per-user weak-area focus → bank wouldn't match).
+        if focused_module is not None or focus_weak_areas:
             cached: list[dict[str, Any]] = []
         elif is_first_session:
             cached = exercise_bank.find_first_session(
@@ -160,7 +175,13 @@ class _ExercisesMixin:
             # by handing it just that module + a derived focus list, so
             # every generated item drills the same idea instead of
             # spreading across the week.
-            if focused_module is not None:
+            if focus_weak_areas:
+                # Bonus drill — the writer should treat recent_weak_areas
+                # as the focus list directly. We still pass the week's
+                # modules for shape/level context but it's not the focus.
+                writer_modules = week_plan.get("modules") or []
+                writer_focus = list(recent_weak_areas)
+            elif focused_module is not None:
                 writer_modules = [focused_module]
                 derived_focus = [
                     focused_module.get("title") or "",
@@ -187,6 +208,8 @@ class _ExercisesMixin:
                 "recent_weak_areas": (
                     [] if is_first_session else recent_weak_areas
                 ),
+                "recent_avg_score": self._recent_avg_score(curriculum_id),
+                "bonus_focus": bool(focus_weak_areas),
                 "count": int(missing),
             }
 
@@ -205,11 +228,16 @@ class _ExercisesMixin:
 
             new_exercises = result.get("exercises") or []
             bank_by_title: dict[str, str] = {}
-            if new_exercises and focused_module is None:
+            if (
+                new_exercises
+                and focused_module is None
+                and not focus_weak_areas
+            ):
                 # Write back to the bank — but only for week-level
-                # generations. Per-module batches stay per-user so the
-                # bank's (week_number, weak_areas) keying isn't muddied
-                # with content tagged for one specific module.
+                # generations. Per-module and bonus-weak-area batches
+                # stay per-user so the bank's (week_number, weak_areas)
+                # keying isn't muddied with content tagged for one
+                # specific module or one user's tag set.
                 bank_rows = exercise_bank.save_batch(
                     self.db,
                     exercises=new_exercises,
@@ -245,19 +273,25 @@ class _ExercisesMixin:
             }
 
         # 3. Persist per-user rows pointing at the bank.
-        # If a module was explicitly requested, every inserted row carries
-        # that module_index so the iOS session screen can group its batch
-        # under the right concept. Otherwise we fall back to the in-batch
-        # ordinal (the existing week-level behaviour).
+        # - Module-focused calls tag every row with the requested module_index.
+        # - Bonus-weak-area calls store NULL so the iOS session screen can
+        #   group them under a separate "bonus" panel rather than the
+        #   per-concept loop.
+        # - Otherwise we fall back to the in-batch ordinal (week-level mode).
+        def _row_module_index(idx: int) -> int | None:
+            if focus_weak_areas:
+                return None
+            if module_index is not None:
+                return module_index
+            return idx
+
         rows_to_insert = [
             {
                 "curriculum_id": curriculum_id,
                 "week_id": week_row["id"],
                 "type": (content.get("type") or "short_answer"),
                 "content_json": content,
-                "module_index": (
-                    module_index if module_index is not None else idx
-                ),
+                "module_index": _row_module_index(idx),
                 "status": "pending",
                 "seen": False,
                 "bank_id": bank_id,
@@ -315,6 +349,17 @@ class _ExercisesMixin:
             "feedback_preference": (summary.get("notes") or None),
             "exercise": ex.get("content_json") or {},
             "submission": submission,
+            # Canonical tag list — the evaluator is told to reuse these
+            # verbatim when the same theme applies, so the FinishedView
+            # "To revisit" recap doesn't accumulate near-duplicates like
+            # "time management" / "time management strategies" / one tag
+            # accidentally translated into the target_language.
+            "existing_weak_areas": list(
+                curriculum.get("recent_weak_areas") or []
+            ),
+            "existing_strengths": list(
+                curriculum.get("recent_strengths") or []
+            ),
         }
 
         try:
@@ -387,12 +432,42 @@ class _ExercisesMixin:
             "score": float(result.get("score") or 0.0),
             "verdict": result.get("verdict") or "reviewed",
             "feedback": result.get("feedback") or "",
+            "gap": result.get("gap") or "",
             "weak_areas": result.get("weak_areas") or [],
+            "strengths": result.get("strengths") or [],
             "next_focus": result.get("next_focus") or "",
             "status": "evaluated",
         }
 
     # ----- internals -----
+
+    def _recent_avg_score(
+        self,
+        curriculum_id: str,
+        window: int = 12,
+    ) -> float | None:
+        """Average score across the user's most recent evaluated exercises
+        in this curriculum. Returns None if they haven't submitted any yet.
+
+        Used as the `recent_avg_score` input to the Exercise Writer +
+        Explainer so future content adapts to recent performance — implicit
+        re-leveling without making the user retake the full Assessor."""
+        rows = (
+            self.db.table("exercises")
+            .select("score,evaluated_at")
+            .eq("curriculum_id", curriculum_id)
+            .eq("status", "evaluated")
+            .order("evaluated_at", desc=True)
+            .limit(window)
+            .execute()
+        ).data or []
+        scored = [
+            float(r["score"]) for r in rows
+            if r.get("score") is not None
+        ]
+        if not scored:
+            return None
+        return sum(scored) / len(scored)
 
     def _maybe_complete_week(self, week_id: str | None) -> bool:
         """Mark a curriculum_weeks row complete once every exercise in it

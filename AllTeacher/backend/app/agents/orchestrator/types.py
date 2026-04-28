@@ -26,12 +26,14 @@ class ExercisesPayload(TypedDict):
     exercises: list[dict[str, Any]]
 
 
-class ExerciseEvalPayload(TypedDict):
+class ExerciseEvalPayload(TypedDict, total=False):
     id: str
     score: float
     verdict: str
     feedback: str
+    gap: str               # why this submission missed the goal
     weak_areas: list[str]
+    strengths: list[str]
     next_focus: str
     status: str
 

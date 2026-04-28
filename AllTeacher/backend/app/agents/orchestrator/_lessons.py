@@ -138,6 +138,13 @@ class _LessonsMixin:
             },
             "exercise_focus": week_plan.get("exercise_focus") or [],
             "recent_weak_areas": list(row.get("recent_weak_areas") or []),
+            # Implicit re-leveling — see _ExercisesMixin._recent_avg_score.
+            # The Explainer mixin sits later in the MRO than the Exercises
+            # mixin, so the helper is reachable on `self` at runtime.
+            "recent_avg_score": (
+                self._recent_avg_score(curriculum_id)  # type: ignore[attr-defined]
+                if hasattr(self, "_recent_avg_score") else None
+            ),
         }
 
         try:

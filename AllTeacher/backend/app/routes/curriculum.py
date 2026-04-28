@@ -176,11 +176,19 @@ def mark_lesson_seen(lesson_id):
 @bp.post("/<curriculum_id>/exercises")
 @require_auth
 def generate_exercises(curriculum_id):
-    """Body: {week_id?: str, count?: int, module_index?: int}
+    """Body: {week_id?: str, count?: int, module_index?: int,
+              focus_weak_areas?: bool}
+
     Runs the Exercise Writer for one week and persists the new exercises.
-    Pass `module_index` to focus the batch on a single planner module
-    (the lesson→exercises flow does this so each batch drills the
-    concept the user just read about).
+
+    - `module_index` focuses the batch on a single planner module
+      (the lesson→exercises flow does this so each batch drills the
+      concept the user just read about).
+    - `focus_weak_areas` runs a bonus drill: every item targets one of
+      the user's recent_weak_areas tags. Rows are inserted with
+      module_index=null so the iOS session screen can group them under
+      a separate "bonus" panel.
+
     Returns: {curriculum_id, week_id, exercises: [...]}
     """
     body = request.get_json(silent=True) or {}
@@ -200,6 +208,8 @@ def generate_exercises(curriculum_id):
         except (TypeError, ValueError):
             return jsonify({"error": "module_index_invalid"}), 400
 
+    focus_weak_areas = bool(body.get("focus_weak_areas") or False)
+
     try:
         payload = _orch().generate_exercises(
             user_id=g.user_id,
@@ -207,6 +217,7 @@ def generate_exercises(curriculum_id):
             week_id=week_id,
             count=count,
             module_index=module_index,
+            focus_weak_areas=focus_weak_areas,
         )
     except OrchestratorError as e:
         return _orch_error(e)

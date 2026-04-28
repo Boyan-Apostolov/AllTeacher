@@ -41,9 +41,13 @@ export const colors = {
   borderStrong: "#d9d0ee",
 };
 
-/** Per-exercise-type accent palette. */
+/**
+ * Per-exercise-type accent palette. Legacy `essay_prompt` rows fall back
+ * to `multiple_choice` colors via the `?? typeAccent.multiple_choice`
+ * pattern at call sites — no separate entry needed.
+ */
 export const typeAccent: Record<
-  "multiple_choice" | "flashcard" | "short_answer" | "essay_prompt",
+  "multiple_choice" | "flashcard" | "short_answer",
   { fg: string; bg: string; gradientFrom: string; gradientTo: string; emoji: string; label: string }
 > = {
   multiple_choice: {
@@ -69,14 +73,6 @@ export const typeAccent: Record<
     gradientTo: "#16a34a",
     emoji: "✏️",
     label: "Short answer",
-  },
-  essay_prompt: {
-    fg: "#d97706",
-    bg: "#fff4d6",
-    gradientFrom: "#fbbf24",
-    gradientTo: "#d97706",
-    emoji: "📝",
-    label: "Writing prompt",
   },
 };
 

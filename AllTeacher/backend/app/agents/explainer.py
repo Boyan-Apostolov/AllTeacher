@@ -54,6 +54,9 @@ class ExplainerInput(TypedDict, total=False):
     concept: ConceptInput                   # the module being taught
     exercise_focus: list[str]               # week-level focus tags
     recent_weak_areas: list[str]            # bias intro/example toward these
+    recent_avg_score: float | None          # 0..1; None if no submissions
+                                            # yet. Adapter signal for
+                                            # implicit re-leveling.
 
 
 # --- prompt ---
@@ -85,6 +88,14 @@ learners get sound/rhythm framing, etc.) without changing the JSON shape.
 If `recent_weak_areas` is non-empty AND any of those tags overlap with
 this concept, lean the `intro` and `example` toward addressing them —
 this is the user's chance to recover before drilling.
+
+Implicit re-leveling: `recent_avg_score` (0..1, may be null) is the
+user's recent average. If it's <0.55 the user is struggling — slow
+down: longer `intro`, more explicit `key_points`, simpler `example`,
+add a `pitfalls` entry that addresses the obvious confusion. If it's
+>0.85 the user is coasting — tighten everything, treat the lesson as a
+pre-drill refresher even at intermediate level. Otherwise hold to the
+level-based defaults above.
 
 `next_up` is one short sentence that hands off to the exercises ("Now
 let's practice ..."), in `native_language`.
