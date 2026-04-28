@@ -67,6 +67,17 @@ export default function SessionScreen() {
   // nothing to fetch but show a spinner when we're hitting the LLM.
   const [phaseLoading, setPhaseLoading] = useState(false);
   const generationStarted = useRef<Set<string>>(new Set());
+  // Mirror of moduleIndex so async fetches can check "is the user still
+  // on the module we requested?" at apply-time. We deliberately do NOT
+  // gate state writes on a per-effect `cancelled` flag because React 18
+  // StrictMode (and any remount) cancels the in-flight effect while the
+  // `generationStarted` dedup prevents the next mount from re-fetching —
+  // that combination would discard the response and leave the screen
+  // stuck on the spinner forever.
+  const currentModuleRef = useRef(0);
+  useEffect(() => {
+    currentModuleRef.current = moduleIndex;
+  }, [moduleIndex]);
 
   const totalModules = modules.length;
 
@@ -172,6 +183,14 @@ export default function SessionScreen() {
 
   // 2. When the lesson screen needs content and we don't have it yet,
   //    fetch (or generate via the Explainer) for the active module.
+  //
+  // We don't use a per-effect `cancelled` flag here: in dev StrictMode
+  // the effect mounts → unmounts → remounts, and the dedup ref in
+  // `generationStarted` blocks the second mount from re-issuing the
+  // request. If we let the cleanup ignore the response, the spinner
+  // would hang until the next time the screen is opened. Instead, we
+  // apply the response whenever the user is still viewing the module
+  // it was generated for (compared via `currentModuleRef`).
   useEffect(() => {
     if (loading) return;
     if (phase !== "lesson") return;
@@ -183,29 +202,36 @@ export default function SessionScreen() {
     if (generationStarted.current.has(key)) return;
     generationStarted.current.add(key);
 
-    let cancelled = false;
+    const requestedModule = moduleIndex;
     setPhaseLoading(true);
     (async () => {
       try {
         const row = await api.generateLesson(token, curriculumId, {
           week_id: weekId,
-          module_index: moduleIndex,
+          module_index: requestedModule,
         });
-        if (cancelled) return;
+        // Only apply if the user hasn't moved on to a different module.
+        if (currentModuleRef.current !== requestedModule) return;
         setLesson(row);
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        // Free the dedup slot so a retry can happen on next render.
+        generationStarted.current.delete(key);
+        if (currentModuleRef.current === requestedModule) {
+          setError((e as Error).message);
+        }
       } finally {
-        if (!cancelled) setPhaseLoading(false);
+        if (currentModuleRef.current === requestedModule) {
+          setPhaseLoading(false);
+        }
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [phase, moduleIndex, lesson, curriculumId, weekId, session?.access_token, loading]);
 
   // 3. When exercise phase starts and we don't yet have a batch for the
   //    active module, generate one filtered to module_index.
+  //
+  // Same StrictMode-safe pattern as the lesson effect — apply by module
+  // identity, not by an effect-scoped cancellation flag.
   useEffect(() => {
     if (loading) return;
     if (phase !== "exercises") return;
@@ -220,27 +246,37 @@ export default function SessionScreen() {
     if (generationStarted.current.has(key)) return;
     generationStarted.current.add(key);
 
-    let cancelled = false;
+    const requestedModule = moduleIndex;
     setPhaseLoading(true);
     (async () => {
       try {
         const gen = await api.generateExercises(token, curriculumId, {
           week_id: weekId,
           count: EXERCISES_PER_MODULE,
-          module_index: moduleIndex,
+          module_index: requestedModule,
         });
-        if (cancelled) return;
-        setExercises((cur) => [...cur, ...(gen.exercises ?? [])]);
-        setActiveIndex(0);
+        // Stitch in regardless of mount churn — the rows are tagged with
+        // module_index so the filtered render will pick the right ones.
+        const fresh = gen.exercises ?? [];
+        setExercises((cur) => {
+          const seenIds = new Set(cur.map((e) => e.id));
+          const additions = fresh.filter((e) => !seenIds.has(e.id));
+          return additions.length === 0 ? cur : [...cur, ...additions];
+        });
+        if (currentModuleRef.current === requestedModule) {
+          setActiveIndex(0);
+        }
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
+        generationStarted.current.delete(key);
+        if (currentModuleRef.current === requestedModule) {
+          setError((e as Error).message);
+        }
       } finally {
-        if (!cancelled) setPhaseLoading(false);
+        if (currentModuleRef.current === requestedModule) {
+          setPhaseLoading(false);
+        }
       }
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [phase, moduleIndex, exercises, curriculumId, weekId, session?.access_token, loading]);
 
   // ----- transitions -----

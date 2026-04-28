@@ -310,6 +310,7 @@ Add a new subagent by dropping a new module under `app/agents/` and wiring it in
 - **New table** `public.lessons` (see `008_lessons.sql`) — `concept_title`, `content_json`, `status` ∈ `pending`/`ready`/`seen`. Cascades from the parent curriculum and week.
 - **`generate_exercises` extended** with optional `module_index` so each batch is scoped to one concept (the bank is bypassed in that path so per-module content doesn't leak into the cross-user week-keyed cache).
 - **iOS** `ios/components/session/LessonView.tsx` renders the lesson card; `ios/app/curriculum/session.tsx` is now a phase machine — `lesson(module_i) → exercises(module_i) → lesson(i+1) → … → finished`. The "Start exercises →" CTA marks the lesson seen and triggers a per-module exercise generation.
+- **StrictMode-safe fetches** in `session.tsx`: the lesson and exercise generation effects no longer use a per-effect `cancelled` cleanup flag. In dev StrictMode the cleanup ran during the unmount/remount dance, throwing away the resolved response while the `generationStarted` ref blocked the second mount from re-fetching — which left the screen stuck on **Preparing your lesson…** until the user backed out and re-entered. Responses are now applied based on whether the user is still viewing the requested module (compared via `currentModuleRef`), and on error the dedup key is freed so the next render retries.
 
 ### UI redesign + prompt trim (2026-04-26)
 
