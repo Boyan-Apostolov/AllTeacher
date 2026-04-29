@@ -20,7 +20,11 @@ Output shape:
   "example": "...",                # one worked example, may include code or
                                    #   target_language phrases as needed
   "pitfalls": ["...", "..."],      # common misconceptions, may be empty
-  "next_up": "..."                 # one-line bridge into the exercises
+  "next_up": "...",                # one-line bridge into the exercises
+  "diagram_mermaid": "..."         # optional Mermaid diagram source. Empty
+                                   #   string when the concept doesn't earn a
+                                   #   visual. iOS renders it client-side via
+                                   #   a WebView + mermaid.min.js.
 }
 """
 from __future__ import annotations
@@ -119,13 +123,35 @@ level-based defaults above.
 `next_up` is one short sentence that hands off to the exercises ("Now
 let's practice ..."), in `native_language`.
 
+DIAGRAMS — `diagram_mermaid`:
+Optional. Default to an EMPTY STRING. Emit a Mermaid diagram source ONLY
+when the concept genuinely has structure that a picture clarifies more
+than prose: a process / pipeline (`flowchart LR ...`), a hierarchy or
+classification (`flowchart TD ...` or `classDiagram`), a sequence of
+interactions (`sequenceDiagram`), a decision tree, a comparison
+(parallel branches). DO NOT emit one for vocabulary, single-fact
+concepts, short language drills, or anything you'd be tempted to
+illustrate with a single labelled box — that's noise. Aim for ≤ 8
+nodes; bigger diagrams overwhelm the small mobile viewport.
+
+When you do emit one:
+- Write all node labels in `native_language`.
+- Use Mermaid's `flowchart` / `classDiagram` / `sequenceDiagram` /
+  `mindmap` syntaxes only — they're the four mermaid.js core renderers
+  and the most reliable on a small WebView.
+- Quote labels with double-quotes when they contain spaces or
+  punctuation (`A["My label"] --> B`).
+- No HTML, no inline styles, no `init` config blocks — keep the source
+  parse-clean so the WebView template doesn't have to whitelist syntax.
+
 Quality bar: the whole lesson should read in under ~90 seconds for
 beginners, under 60 for intermediate, under 30 for advanced. No filler.
 No restating the obvious. No "in this lesson we will" preambles — go
 straight to the substance.
 
 The schema requires every field. `pitfalls` may be an empty array but
-must be present.\
+must be present. `diagram_mermaid` may be an empty string but must be
+present.\
 """
 
 
@@ -147,10 +173,13 @@ RESPONSE_SCHEMA = {
             "maxItems": 3,
         },
         "next_up": {"type": "string"},
+        # Empty string when the concept doesn't earn a diagram. Required
+        # by strict schema; iOS treats "" as "no diagram, render text only".
+        "diagram_mermaid": {"type": "string"},
     },
     "required": [
         "concept_title", "intro", "key_points", "example",
-        "pitfalls", "next_up",
+        "pitfalls", "next_up", "diagram_mermaid",
     ],
     "additionalProperties": False,
 }

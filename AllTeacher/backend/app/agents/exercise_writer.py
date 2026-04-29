@@ -11,7 +11,8 @@ Output shape:
 {
   "exercises": [
     {
-      "type": "multiple_choice" | "flashcard" | "short_answer",
+      "type": "multiple_choice" | "flashcard" | "short_answer"
+            | "listen_choice",
       "title": "...",                 # short label, native_language
       # multiple_choice:
       "prompt": "...",                # in native_language unless target-language drill
@@ -25,6 +26,14 @@ Output shape:
       "rubric": ["...", "..."],       # optional — only when there are
                                       # multiple acceptable answers / a
                                       # multi-criterion judgement is needed
+      # listen_choice (audio comprehension; orchestrator generates audio_url
+      # post-Writer via OpenAI TTS and stuffs it into content_json):
+      "audio_text": "...",            # the spoken phrase, in target_language
+      "language": "...",              # BCP-47 code (defaults to target_language)
+      "prompt_native": "...",         # the question shown above the play button,
+                                      # in native_language ("What did you hear?")
+                                      # — `prompt` may also be set for redundancy
+                                      # but prompt_native takes priority on render.
     },
     ...
   ]
@@ -76,6 +85,11 @@ class WriterInput(TypedDict, total=False):
     bonus_focus: bool                       # when True, this is a bonus
                                             # weak-area drill — every item
                                             # must target one of recent_weak_areas
+    listening_enabled: bool                 # gates the `listen_choice` type.
+                                            # Orchestrator sets False for free
+                                            # users (TTS isn't free) so we don't
+                                            # waste model budget on items that
+                                            # would be dropped post-generation.
     count: int                              # how many exercises to generate
 
 
@@ -90,6 +104,7 @@ Types — pick the right one per item; mix types across the batch:
 - multiple_choice: prompt + 3–5 options + correct_index (0-based). Vocab recognition, grammar judgement, concept recall, code-output prediction, theory.
 - flashcard: front (cue) + back (answer). Self-graded by the user. Vocabulary, terminology, formulas, repertoire hooks.
 - short_answer: open prompt where the user types a free-text response. Use this for translation, definitions, problem-set numericals — AND for longer writing/explanation/critique tasks. For longer prompts include `rubric` (3–5 bullets) so the Evaluator can grade by criteria. `expected` may be a model answer (short types) OR a brief sketch of what a good response covers (longer types).
+- listen_choice: ALLOWED ONLY WHEN `listening_enabled` is true AND `target_language` is set AND domain is language-flavoured (vocabulary, conversation, grammar, listening comprehension). Set `audio_text` to one short phrase or sentence in `target_language` (typically 3–15 words, never more than 25), `language` to `target_language` (the BCP-47 code), `prompt_native` to a short native-language question that frames what the user is listening for ("What does the speaker say?", "Which option matches what you heard?", "Pick the correct translation"). Set `options` (3–4 items, in `native_language` for comprehension exercises, in `target_language` only when the user is choosing the spelling/form they heard) and `correct_index`. Skip this type entirely for code/math/fitness/professional domains — listening doesn't earn its keep there.
 
 Quality: keep each exercise doable in ~2 minutes; longer writing prompts may take ~5 min. Calibrate difficulty to `level`. Honor `exercise_focus` (if empty, derive from week modules + objective). Honor `learning_style`. Skip any title in `seen_titles`; if a topic must repeat, vary phrasing AND angle.
 
@@ -108,7 +123,12 @@ The schema requires every field on every exercise. For fields irrelevant to the 
 # Single fixed schema with optional fields per type. Strict mode requires
 # every property in `required`, so we declare them all and let the model
 # zero out the ones that don't apply (see prompt instructions above).
-EXERCISE_TYPE_ENUM = ["multiple_choice", "flashcard", "short_answer"]
+EXERCISE_TYPE_ENUM = [
+    "multiple_choice",
+    "flashcard",
+    "short_answer",
+    "listen_choice",
+]
 
 EXERCISE_SCHEMA = {
     "type": "object",
@@ -128,10 +148,18 @@ EXERCISE_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
+        # listen_choice fields — empty for non-audio types. The
+        # orchestrator generates `audio_url` post-Writer (TTS round-trip)
+        # and stuffs it into content_json before the DB insert; the
+        # Writer only emits the *text* to be spoken plus the framing.
+        "audio_text": {"type": "string"},
+        "language": {"type": "string"},
+        "prompt_native": {"type": "string"},
     },
     "required": [
         "type", "title", "prompt", "options", "correct_index",
         "front", "back", "expected", "rubric",
+        "audio_text", "language", "prompt_native",
     ],
     "additionalProperties": False,
 }
@@ -175,6 +203,14 @@ def _strip_empty(ex: dict[str, Any]) -> dict[str, Any]:
         "multiple_choice": ["prompt", "options", "correct_index"],
         "flashcard": ["front", "back"],
         "short_answer": ["prompt", "expected", "rubric"],
+        # listen_choice carries audio_text + language + prompt_native
+        # alongside the standard MCQ fields. `audio_url` lands later,
+        # post-TTS, via the orchestrator — not part of the Writer's
+        # output and so not in the keep list here.
+        "listen_choice": [
+            "audio_text", "language", "prompt_native",
+            "options", "correct_index",
+        ],
     }
     for k in keep_by_type.get(t, []):
         v = ex.get(k)

@@ -110,7 +110,11 @@ export type ExerciseType =
   | "multiple_choice"
   | "flashcard"
   | "short_answer"
-  | "essay_prompt";
+  | "essay_prompt"
+  | "listen_choice"
+  | "image_match";  // reserved — no Writer support yet, here so the
+                    // discriminated union narrows cleanly when the
+                    // next iteration ships it.
 
 export type ExerciseContent = {
   type: ExerciseType;
@@ -130,6 +134,18 @@ export type ExerciseContent = {
   // legacy — Exercise Writer no longer emits this; per-answer "why this
   // missed the goal" comes from ExerciseFeedback.gap instead
   explanation?: string;
+  // listen_choice — audio comprehension. `audio_url` is the public
+  // Supabase Storage URL the orchestrator generates post-Writer via
+  // OpenAI TTS. `audio_text` is what's spoken (target_language);
+  // `prompt_native` is the question above the play button
+  // (native_language); `language` is BCP-47.
+  audio_url?: string;
+  audio_text?: string;
+  language?: string;
+  prompt_native?: string;
+  // image_match (reserved) — URL of the image shown above the
+  // multiple-choice options (which reuse `options` + `correct_index`).
+  image_url?: string;
 };
 
 export type ExerciseSubmission =
@@ -203,6 +219,12 @@ export type LessonContent = {
   example: string;
   pitfalls: string[];
   next_up: string;
+  // Optional Mermaid source. Empty string = no diagram for this concept.
+  // The Explainer is told to leave it empty for short text-only lessons
+  // and to fill it for structural concepts (process flows, hierarchies,
+  // sequences, comparisons). Rendered client-side via a WebView +
+  // mermaid.min.js — see components/lesson/MermaidDiagram.tsx.
+  diagram_mermaid?: string;
 };
 
 export type LessonRow = {

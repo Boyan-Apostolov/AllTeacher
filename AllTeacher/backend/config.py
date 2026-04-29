@@ -53,6 +53,29 @@ class Config:
         "default":          {"prompt": 0.001,  "completion": 0.004},
     }
 
+    # OpenAI TTS pricing — flat per-character rate, not per-token. The
+    # usage_meter still keys on (prompt_tokens, completion_tokens), so
+    # `app/services/media.py::tts_to_url` synthesises a usage object
+    # with `prompt_tokens = char_count` (and completion=0) and the
+    # pricing entry below treats `prompt` as $/1K characters.
+    OPENAI_TTS_USD_PER_1K_CHARS: dict[str, float] = {
+        "tts-1":     0.015,   # $15 / 1M chars
+        "tts-1-hd":  0.030,   # $30 / 1M chars — HD voices, deferred
+    }
+    # Default voice + model — overrideable per call. `alloy` is neutral
+    # and gender-ambiguous, fine for language-learning prompts where we
+    # don't want to bias the user toward gendered speech.
+    OPENAI_TTS_MODEL = os.getenv("OPENAI_TTS_MODEL", "tts-1")
+    OPENAI_TTS_VOICE = os.getenv("OPENAI_TTS_VOICE", "alloy")
+
+    # Supabase Storage buckets the backend writes to. Bucket names must
+    # be globally unique within the project — keep these prefixed if
+    # other apps share the same Supabase project.
+    STORAGE_BUCKET_AUDIO = os.getenv("STORAGE_BUCKET_AUDIO", "exercise-audio")
+    STORAGE_BUCKET_LESSON_MEDIA = os.getenv(
+        "STORAGE_BUCKET_LESSON_MEDIA", "lesson-media"
+    )
+
     # Tier list rendered to the admin dashboard. Keep in sync with the
     # `subscriptions.tier` CHECK constraint and the iOS paywall.
     TIER_PRICES_EUR_CENTS: dict[str, int] = {

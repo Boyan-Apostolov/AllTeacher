@@ -114,7 +114,17 @@ def record(
 
     prompt_tokens = int(getattr(usage, "prompt_tokens", 0) or 0)
     completion_tokens = int(getattr(usage, "completion_tokens", 0) or 0)
-    cost_cents = _cost_cents(model, prompt_tokens, completion_tokens)
+
+    # Caller can attach a precomputed cost (TTS uses this — its pricing
+    # is per-character, not per-token, so the meter's standard
+    # `_cost_cents` lookup would massively under-bill). Honour the
+    # override when present, fall back to the model-pricing table
+    # otherwise.
+    override = getattr(usage, "cost_cents_override", None)
+    if override is not None:
+        cost_cents = float(override)
+    else:
+        cost_cents = _cost_cents(model, prompt_tokens, completion_tokens)
 
     scope.events.append(
         _Event(

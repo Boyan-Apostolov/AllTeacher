@@ -19,11 +19,16 @@ from typing import Any, Iterator
 
 from config import Config
 from app.agents import evaluator, exercise_bank, exercise_writer, tracker
-from app.services import usage_meter
+from app.services import media, usage_meter
 
 from ._base import now_iso
 from .errors import Conflict, NotFound, OrchestratorError
 from .types import ExerciseEvalPayload, ExercisesPayload
+
+
+# Tiers allowed to receive `listen_choice` exercises. TTS is real
+# spend per character — gating to Pro+ keeps free users free-and-cheap.
+_LISTEN_TIERS = {"pro", "power"}
 
 
 class _ExercisesMixin:
@@ -51,6 +56,7 @@ class _ExercisesMixin:
         count: int = 5,
         module_index: int | None = None,
         focus_weak_areas: bool = False,
+        tier: str = "free",
     ) -> ExercisesPayload:
         """Materialise one session worth of exercises for a week.
 
@@ -215,6 +221,10 @@ class _ExercisesMixin:
                 ),
                 "recent_avg_score": self._recent_avg_score(curriculum_id),
                 "bonus_focus": bool(focus_weak_areas),
+                # Audio listen_choice items are Pro+ only; tell the
+                # writer up-front so it doesn't waste output tokens
+                # emitting items that would just get dropped post-gen.
+                "listening_enabled": tier in _LISTEN_TIERS,
                 "count": int(missing),
             }
 
@@ -269,6 +279,22 @@ class _ExercisesMixin:
                 delivered.append(
                     (ex, bank_by_title.get(ex.get("title") or ""))
                 )
+
+        # 2.5 Multimodal post-processing — handles `listen_choice` rows
+        # that arrived from either the bank or the writer. Two
+        # responsibilities:
+        #   (a) For Pro+ users with no cached audio_url on the row, run
+        #       OpenAI TTS, upload to Storage, write the URL into
+        #       `content_json.audio_url`. (Cache hits in `media.tts_to_url`
+        #       mean re-running the same content text is free.)
+        #   (b) For free users — drop listen_choice rows entirely. We'd
+        #       rather give them fewer exercises than a broken silent
+        #       listening card. This also drops bank hits whose audio_url
+        #       happened to be cached from a previous Pro user.
+        # If TTS fails for any individual row (network blip, missing
+        # OPENAI_API_KEY in dev), drop that row too — silent listening
+        # is worse than missing.
+        delivered = self._materialise_audio(delivered, tier=tier)
 
         if not delivered:
             return {
@@ -595,6 +621,69 @@ class _ExercisesMixin:
         }
 
     # ----- internals -----
+
+    def _materialise_audio(
+        self,
+        delivered: list[tuple[dict[str, Any], str | None]],
+        *,
+        tier: str,
+    ) -> list[tuple[dict[str, Any], str | None]]:
+        """Tier-gate + TTS-hydrate `listen_choice` rows.
+
+        Free users: every `listen_choice` row is dropped. Pro+ users:
+        every row missing a usable `audio_url` gets one synthesised via
+        OpenAI TTS (cached in Supabase Storage by content hash so repeat
+        runs of the same audio_text don't re-spend). Rows that fail TTS
+        are dropped on the floor — silent listening cards are worse than
+        absent ones.
+
+        Returns the filtered/hydrated `delivered` list in the same
+        `(content, bank_id)` shape the caller expects.
+        """
+        listening_ok = tier in _LISTEN_TIERS
+        out: list[tuple[dict[str, Any], str | None]] = []
+        for content, bank_id in delivered:
+            if (content.get("type") or "") != "listen_choice":
+                out.append((content, bank_id))
+                continue
+
+            if not listening_ok:
+                # Free user: drop. Don't backfill with a substitute —
+                # generate_exercises will just deliver a shorter batch
+                # this round.
+                continue
+
+            existing_url = content.get("audio_url")
+            if existing_url:
+                # Bank hit with a previously-cached URL. Trust it (the
+                # bucket is content-addressed, so the file is still
+                # there or a future TTS regen will overwrite to the
+                # same key).
+                out.append((content, bank_id))
+                continue
+
+            audio_text = (content.get("audio_text") or "").strip()
+            if not audio_text:
+                # Writer emitted a listen_choice with no text — nothing
+                # to synthesise. Drop.
+                continue
+
+            language = content.get("language") or None
+            url = media.tts_to_url(audio_text, language=language)
+            if not url:
+                # TTS failed (no API key, network blip, storage
+                # permission). Drop the row; the user will get one
+                # fewer exercise in this batch.
+                continue
+
+            # Mutate the content dict so the URL persists into the DB
+            # row's content_json. The bank_id (when set) points at a
+            # row whose own content_json now lacks audio_url — the next
+            # delivery for that bank row will re-fill via the cache hit
+            # path above (URL is content-deterministic, no extra cost).
+            content["audio_url"] = url
+            out.append((content, bank_id))
+        return out
 
     def _recent_avg_score(
         self,

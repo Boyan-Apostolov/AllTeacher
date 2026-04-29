@@ -434,7 +434,8 @@ Next, in roughly MVP order:
 6. ~~Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.~~ ✅
 7. ~~Tier enforcement — manual admin grants, no payments yet.~~ ✅
 7b. RevenueCat → Apple IAP webhook + receipt validation. ← deferred until the user is ready to deal with App Store Connect.
-8. TestFlight submission.
+8. **🚧 Multimodal — listening exercises (TTS) + visual lessons (Mermaid).** ← in progress, see Step 8 subtasks below.
+9. TestFlight submission.
 
 #### Step 6 subtasks — streaming Evaluator (resumable checklist)
 
@@ -480,5 +481,33 @@ iOS:
 
 QA + docs:
 - [x] **7h** — TS + Python compile clean (verified via subagent). SETUP.md: "Tier enforcement — manual grants, no payments yet (2026-04-29)" section added under Recent changes; main next-steps list shows step 7 crossed off and a new `7b.` placeholder for the RevenueCat / Apple IAP wiring.
+
+#### Step 8 subtasks — multimodal: listening exercises + visual lessons (resumable checklist)
+
+Goal: take the curriculum past plain text. Two new surfaces in this slice — a `listen_choice` exercise type that plays TTS audio of a phrase (in `target_language`) and asks the user to pick what was said (in `native_language`), and an optional `diagram_mermaid` field on lessons that the Explainer can fill when a structural diagram earns its keep (process flows, hierarchies, comparisons).
+
+Design choices, called out so future-me can disagree without re-deriving them:
+- **Audio = OpenAI TTS (`tts-1`)**, one round-trip per exercise, generated server-side AFTER the Writer has produced the row, BEFORE the row is persisted. Cached in Supabase Storage by content hash so a regenerated batch with identical text doesn't re-spend.
+- **Storage = Supabase Storage public bucket** (`exercise-audio`). Public is fine — the URL is unguessable (hashed key) and the audio is the same content the user is paying us to hear. Saves us from signed-URL plumbing.
+- **Visual lessons = Mermaid only** for v1. Free, no API cost, renders client-side in a WebView. AI-generated lesson images (DALL-E / `gpt-image-1`) are deferred — they'd be 5–10× the per-lesson cost, so they earn a separate decision later.
+- **Tier-gating**: `listen_choice` is Pro+ only. Free users have those rows dropped from the batch by the orchestrator (rather than served audio-less, which would just be a worse multiple-choice). `diagram_mermaid` is free for everyone — text-only, no marginal cost.
+- **No new DB columns** — both audio_url and diagram_mermaid live inside `content_json` per the existing pattern.
+
+Backend:
+- [x] **8a** — Migration `010_multimodal_exercise_types.sql` adds `listen_choice` + `image_match` to the type CHECK on both `exercises` and `exercise_bank`. Constraint discovery uses a `pg_constraint` DO block since the original was created via the Supabase dashboard with an unknown name.
+- [x] **8b** — `app/services/media.py::tts_to_url(text, voice?, model?)` returns the cached/uploaded mp3's public URL. Cache key = sha256(text+voice+model), stored in the `exercise-audio` bucket as `{key}.mp3`. `_ensure_bucket` is idempotent. Records cost via `usage_meter` with `agent='tts'`; `usage_meter._cost_cents` patched to honour a `cost_cents_override` so per-character TTS pricing lands accurately. New config: `OPENAI_TTS_MODEL`, `OPENAI_TTS_VOICE`, `OPENAI_TTS_USD_PER_1K_CHARS`, `STORAGE_BUCKET_AUDIO`.
+- [x] **8c** — Writer's `EXERCISE_TYPE_ENUM` adds `listen_choice`; schema gets `audio_text`, `language`, `prompt_native` (all required-but-empty for non-audio types per strict JSON schema). SYSTEM_PROMPT teaches when to pick the type: only with `listening_enabled=true`, `target_language` set, language-flavoured domain. `_strip_empty()` whitelists the new fields. WriterInput gets `listening_enabled: bool` so the orchestrator can gate by tier.
+- [x] **8d** — `generate_exercises` takes a new `tier` kwarg (route passes `g.user_tier`). New `_materialise_audio()` helper runs after the bank+writer steps but before the DB insert: free users have all `listen_choice` rows dropped; Pro+ rows missing `audio_url` get hydrated via `media.tts_to_url`; rows with TTS failures are dropped (silent is worse than missing). The writer payload also gets `listening_enabled = tier in {'pro','power'}` so it doesn't waste output tokens on items that would be discarded.
+- [x] **8e** — Explainer's RESPONSE_SCHEMA gets `diagram_mermaid: string` (required, empty = no diagram). System prompt's new DIAGRAMS block teaches when a diagram earns its keep (process flows, hierarchies, sequences, comparisons), what to avoid (vocab/single-fact concepts), and constrains output to mermaid's four core renderers + ≤8 nodes for the small mobile viewport.
+
+iOS:
+- [x] **8f** — `ios/package.json` adds `expo-av@~14.0.7` and `react-native-webview@13.8.6` (Expo SDK 51 compatible — user runs `npm install` later). `lib/api.ts`: `ExerciseType` adds `'listen_choice'` and `'image_match'` (latter is reserved for the next iteration); `ExerciseContent` adds `audio_url`, `audio_text`, `language`, `prompt_native`, `image_url`; `LessonContent` adds `diagram_mermaid?`.
+- [ ] **8g** — `components/session/ListenChoice.tsx`: lazy `require('expo-av')` (try/catch fallback for the pre-install state). Big circular Play/Pause button + a Replay icon. Auto-plays once on mount, then waits for user input. After audio ends, options become tappable (so the user can't peek at the answer while the audio plays). Wire into `ExerciseView.tsx` switch.
+- [ ] **8h** — `components/lesson/MermaidDiagram.tsx`: lazy `require('react-native-webview')`. Render an inline HTML doc that loads `mermaid.min.js` from cdnjs, runs `mermaid.run()` on the source, and posts the rendered SVG height back so the WebView can size itself. Slot into `LessonView.tsx` after the example block when `content_json.diagram_mermaid` is non-empty.
+
+QA + docs:
+- [ ] **8i** — TS + Python compile clean (subagent). SETUP.md: add a "Multimodal: listening exercises + visual lessons (2026-04-29)" log entry. Note remaining user actions: `cd ios && npm install` for the new packages; optional Supabase Storage bucket pre-creation if the service-role key doesn't have create-bucket privilege.
+
+Tick each box as you finish.
 
 Tick each box (`[x]`) as you finish.

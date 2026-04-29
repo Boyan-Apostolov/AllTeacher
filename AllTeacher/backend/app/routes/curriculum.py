@@ -227,6 +227,10 @@ def generate_exercises(curriculum_id):
             count=count,
             module_index=module_index,
             focus_weak_areas=focus_weak_areas,
+            # Tier gates `listen_choice` rows — Pro+ get TTS-hydrated
+            # audio, free users have those rows dropped (see
+            # `_materialise_audio` in the orchestrator).
+            tier=getattr(g, "user_tier", "free"),
         )
     except OrchestratorError as e:
         return _orch_error(e)

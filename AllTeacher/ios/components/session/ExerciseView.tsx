@@ -28,6 +28,7 @@ import { ExerciseHeader } from "./ExerciseHeader";
 import { exerciseViewStyles as styles } from "./ExerciseView.styles";
 import { FeedbackCard } from "./FeedbackCard";
 import { Flashcard } from "./Flashcard";
+import { ListenChoice } from "./ListenChoice";
 import { MultipleChoice } from "./MultipleChoice";
 import { ShortAnswer } from "./ShortAnswer";
 
@@ -81,6 +82,18 @@ export function ExerciseView({
 
       {c.type === "multiple_choice" ? (
         <MultipleChoice
+          content={c}
+          submission={exercise.submission_json}
+          disabled={submitting || evaluated}
+          onPick={(idx) => onSubmit({ choice_index: idx })}
+        />
+      ) : c.type === "listen_choice" ? (
+        // Audio comprehension — same submission shape as MCQ
+        // (`{ choice_index }`) so the Evaluator path is identical.
+        // Re-mount per exercise so the loaded sound is unloaded
+        // cleanly and we don't bleed audio between cards.
+        <ListenChoice
+          key={exercise.id}
           content={c}
           submission={exercise.submission_json}
           disabled={submitting || evaluated}
