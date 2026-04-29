@@ -12,6 +12,7 @@
 import { Text, View } from "react-native";
 
 import { PrimaryCta } from "@/components/ui";
+import { MermaidDiagram } from "@/components/lesson/MermaidDiagram";
 import type { LessonRow } from "@/lib/api";
 
 import { lessonViewStyles as styles } from "./LessonView.styles";
@@ -73,6 +74,18 @@ export function LessonView({
             <View style={styles.exampleBox}>
               <Text style={styles.exampleText}>{c.example}</Text>
             </View>
+          </View>
+        ) : null}
+
+        {/* Optional structural diagram — empty string means "no diagram
+            for this concept", which the Explainer prompt teaches as
+            the default for short text-only lessons. Renders below the
+            example so the diagram amplifies the worked example rather
+            than competing with the intro for attention. */}
+        {c.diagram_mermaid && c.diagram_mermaid.trim().length > 0 ? (
+          <View>
+            <Text style={styles.sectionLabel}>Visual</Text>
+            <MermaidDiagram source={c.diagram_mermaid} />
           </View>
         ) : null}
 

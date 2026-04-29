@@ -338,6 +338,34 @@ User reported: the post-submit screen shows the main `feedback` paragraph in Eng
 - **Canonical tag reuse** — orchestrator now passes `existing_weak_areas` + `existing_strengths` (curriculum's recent_weak_areas / recent_strengths) into the Evaluator payload. New CANONICAL TAGS prompt block tells the model to reuse those strings verbatim when the same theme applies, instead of coining variants.
 - **Client-side safety net** (`ios/components/session/FinishedView.tsx`) — `topTags()` rewritten as a bucketing pass: trim + casefold every tag, group tags whose normalized form is a prefix/substring of another (so "time management" and "time management strategies" merge), and render the most-frequent surface form within each bucket. The recap shows one row per theme even if the model still leaks the occasional translated variant.
 
+### Multimodal — listening exercises + visual lessons (2026-04-29)
+
+User wanted the curriculum to grow past plain text. Two new surfaces in this slice — audio listening exercises (TTS-generated, played via `expo-av`) and optional Mermaid diagrams in lessons (rendered in a WebView). Built the smaller, scope-tight version on purpose: pronunciation evaluation and AI-generated lesson images deferred to follow-up iterations.
+
+Schema:
+- **Migration 010** (`db/migrations/010_multimodal_exercise_types.sql`) — extends the `exercises.type` and `exercise_bank.type` CHECK constraints to allow `listen_choice` and `image_match` (the latter is a placeholder for the next iteration so we don't burn another migration when we ship it). Constraint discovery uses a `pg_constraint` DO block since the original was created via the Supabase dashboard with an unknown name.
+
+Backend:
+- **TTS service** (`backend/app/services/media.py`) — `tts_to_url(text, voice?, model?)` returns a public Supabase Storage URL. Cache key = `sha256(text+voice+model)`, stored as `{key}.mp3`. Identical content reuses the cached file (no re-spend). Idempotent `_ensure_bucket` handles bucket auto-create. Records cost via `usage_meter` with `agent='tts'`; `usage_meter._cost_cents` patched to honour a `cost_cents_override` field on the synthetic usage object so per-character TTS pricing lands accurately. New config: `OPENAI_TTS_MODEL` (`tts-1`), `OPENAI_TTS_VOICE` (`alloy`), `OPENAI_TTS_USD_PER_1K_CHARS`, `STORAGE_BUCKET_AUDIO` (`exercise-audio`), `STORAGE_BUCKET_LESSON_MEDIA` (`lesson-media`, reserved for the next iteration).
+- **Exercise Writer** (`agents/exercise_writer.py`) — `EXERCISE_TYPE_ENUM` adds `listen_choice`. RESPONSE_SCHEMA gains `audio_text`, `language`, `prompt_native` (all required-but-empty for non-audio types per OpenAI's strict JSON schema rule). System prompt: type only allowed when `listening_enabled=true` (orchestrator gates by tier), `target_language` is set, and the domain is language-flavoured — never picked for code/math/fitness. `_strip_empty()` whitelists the new fields. New `WriterInput.listening_enabled: bool` so the writer doesn't waste output tokens on items that would be discarded.
+- **Orchestrator** (`orchestrator/_exercises.py`) — `generate_exercises` takes a new `tier` kwarg (route passes `g.user_tier`). New `_materialise_audio()` helper runs after the bank+writer steps but before the DB insert: free users have all `listen_choice` rows dropped silently; Pro+ rows missing `audio_url` get hydrated via `media.tts_to_url`; rows that fail TTS are dropped (silent listening cards are worse than missing). The writer payload also gets `listening_enabled = tier in {'pro','power'}`.
+- **Explainer** (`agents/explainer.py`) — RESPONSE_SCHEMA adds `diagram_mermaid: string` (required, empty = no diagram). System prompt's new DIAGRAMS block teaches when a diagram earns its keep (process flows, hierarchies, sequences, comparisons), what to avoid (vocab/single-fact concepts, anything ≤ 8 nodes can clarify), and constrains output to mermaid's four core renderers (`flowchart`, `classDiagram`, `sequenceDiagram`, `mindmap`).
+
+iOS:
+- **Deps** (`ios/package.json`) — `expo-av@~14.0.7` and `react-native-webview@13.8.6` declared (Expo SDK 51 compatible). User runs `npm install` later.
+- **Types** (`ios/lib/api.ts`) — `ExerciseType` adds `'listen_choice'` and `'image_match'` (latter reserved). `ExerciseContent` adds `audio_url`, `audio_text`, `language`, `prompt_native`, `image_url`. `LessonContent` adds `diagram_mermaid?`.
+- **ListenChoice** (`components/session/ListenChoice.tsx` + `.styles.ts`) — lazy `require('expo-av')` so the file typechecks before install. Big play/replay button on a card; auto-plays once on mount; options stay locked until first playback finishes (so the user can't peek at the answer while audio plays). On TTS failure, falls back to showing `audio_text` inline so the exercise still works as a regular MCQ. Submission shape is `{ choice_index }` — same as `multiple_choice`, so the Evaluator path is unchanged.
+- **MermaidDiagram** (`components/lesson/MermaidDiagram.tsx` + `.styles.ts`) — lazy WebView require (default OR named export to handle multiple package versions). Inline HTML pins `mermaid@10.9.1` from cdnjs, themes the diagram against the app palette (`brand`/`brandDeep`), posts measured SVG height back over `postMessage` so the parent `<View>` resizes (clamped 80–600px). LessonView renders it in a new "Visual" section between Example and Watch out — only when `content_json.diagram_mermaid` is non-empty.
+
+Plus a Writer LANGUAGE-rule fix unrelated to multimodal: user reported the Writer was writing prompts and explanations in `target_language` (e.g. Dutch) when the user is learning Dutch. The previous "may use target_language so the user actually practices it" carve-out was too loose. Tightened the rule: prompts, instructions, rubric bullets, and any explanation text are ALWAYS native_language. Only the *artifact being tested* (a Dutch word, a sentence to translate) appears in target_language. `audio_text` for `listen_choice` is the explicit exception (it's literally the spoken artifact).
+
+Out of scope (deliberate — picked up later):
+- Speech-to-text / pronunciation evaluation (needs Whisper + a new Evaluator branch).
+- AI-generated lesson images (DALL-E / `gpt-image-1`) — the schema reserved space (`image_url` on `ExerciseContent`, `STORAGE_BUCKET_LESSON_MEDIA` in config) but no generation pipeline yet.
+- `image_match` exercise type — reserved in the type union and the migration, no Writer support yet.
+
+User actions remaining: `cd ios && npm install`; apply `010_multimodal_exercise_types.sql` in Supabase SQL editor; optionally pre-create the `exercise-audio` bucket as Public if the service-role key can't create buckets (the helper tries idempotently on first use).
+
 ### Tier enforcement — manual grants, no payments yet (2026-04-29)
 
 User wanted the three-tier hierarchy (free / pro / power) wired up end-to-end without dealing with Apple / RevenueCat. Operator manually promotes users from the admin dashboard for now; RevenueCat IAP becomes step 7b later.
@@ -434,7 +462,7 @@ Next, in roughly MVP order:
 6. ~~Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.~~ ✅
 7. ~~Tier enforcement — manual admin grants, no payments yet.~~ ✅
 7b. RevenueCat → Apple IAP webhook + receipt validation. ← deferred until the user is ready to deal with App Store Connect.
-8. **🚧 Multimodal — listening exercises (TTS) + visual lessons (Mermaid).** ← in progress, see Step 8 subtasks below.
+8. ~~Multimodal — listening exercises (TTS) + visual lessons (Mermaid).~~ ✅
 9. TestFlight submission.
 
 #### Step 6 subtasks — streaming Evaluator (resumable checklist)
@@ -502,11 +530,12 @@ Backend:
 
 iOS:
 - [x] **8f** — `ios/package.json` adds `expo-av@~14.0.7` and `react-native-webview@13.8.6` (Expo SDK 51 compatible — user runs `npm install` later). `lib/api.ts`: `ExerciseType` adds `'listen_choice'` and `'image_match'` (latter is reserved for the next iteration); `ExerciseContent` adds `audio_url`, `audio_text`, `language`, `prompt_native`, `image_url`; `LessonContent` adds `diagram_mermaid?`.
-- [ ] **8g** — `components/session/ListenChoice.tsx`: lazy `require('expo-av')` (try/catch fallback for the pre-install state). Big circular Play/Pause button + a Replay icon. Auto-plays once on mount, then waits for user input. After audio ends, options become tappable (so the user can't peek at the answer while the audio plays). Wire into `ExerciseView.tsx` switch.
-- [ ] **8h** — `components/lesson/MermaidDiagram.tsx`: lazy `require('react-native-webview')`. Render an inline HTML doc that loads `mermaid.min.js` from cdnjs, runs `mermaid.run()` on the source, and posts the rendered SVG height back so the WebView can size itself. Slot into `LessonView.tsx` after the example block when `content_json.diagram_mermaid` is non-empty.
+- [x] **8g** — `ListenChoice.tsx` + `.styles.ts` added. Lazy `require('expo-av')` so the file typechecks before `npm install`. Auto-plays once on mount, locks options until first playback finishes, replay button never disables. On TTS failure, falls back to showing the audio_text inline so the exercise still works as a regular MCQ. Wired into `ExerciseView`'s switch.
+- [x] **8g** — see Step 8f log entry above (consolidated).
+- [x] **8h** — `components/lesson/MermaidDiagram.tsx` + `.styles.ts`: lazy WebView require (default OR named export to handle multiple package versions). Inline HTML pins mermaid 10.9.1 from cdnjs, themes the diagram against the app palette, posts rendered SVG height via `postMessage` so the parent `<View>` resizes (clamped 80–600px). LessonView renders the diagram in a new "Visual" section between Example and Watch out — only when `content_json.diagram_mermaid` is non-empty.
 
 QA + docs:
-- [ ] **8i** — TS + Python compile clean (subagent). SETUP.md: add a "Multimodal: listening exercises + visual lessons (2026-04-29)" log entry. Note remaining user actions: `cd ios && npm install` for the new packages; optional Supabase Storage bucket pre-creation if the service-role key doesn't have create-bucket privilege.
+- [x] **8i** — TS + Python compile clean (subagent). SETUP.md log entry added below; main next-steps list shows step 8 crossed off. **Remaining user actions**: (1) `cd ios && npm install` to pull in `expo-av` + `react-native-webview`; (2) hit `apply` on `db/migrations/010_multimodal_exercise_types.sql` in the Supabase SQL editor; (3) optional — pre-create the `exercise-audio` bucket in Supabase Storage as Public if the service-role key can't create buckets (the helper attempts it idempotently on first use).
 
 Tick each box as you finish.
 
