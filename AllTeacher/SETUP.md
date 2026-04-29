@@ -338,6 +338,50 @@ User reported: the post-submit screen shows the main `feedback` paragraph in Eng
 - **Canonical tag reuse** — orchestrator now passes `existing_weak_areas` + `existing_strengths` (curriculum's recent_weak_areas / recent_strengths) into the Evaluator payload. New CANONICAL TAGS prompt block tells the model to reuse those strings verbatim when the same theme applies, instead of coining variants.
 - **Client-side safety net** (`ios/components/session/FinishedView.tsx`) — `topTags()` rewritten as a bucketing pass: trim + casefold every tag, group tags whose normalized form is a prefix/substring of another (so "time management" and "time management strategies" merge), and render the most-frequent surface form within each bucket. The recap shows one row per theme even if the model still leaks the occasional translated variant.
 
+### Tier enforcement — manual grants, no payments yet (2026-04-29)
+
+User wanted the three-tier hierarchy (free / pro / power) wired up end-to-end without dealing with Apple / RevenueCat. Operator manually promotes users from the admin dashboard for now; RevenueCat IAP becomes step 7b later.
+
+Backend:
+- **Tier loading** (`backend/app/middleware/auth.py`) — after JWT verification, `_load_user_tier()` reads the user's `subscriptions` row and writes the effective tier to `g.user_tier` (default `'free'` for missing row, expired `current_period_end`, non-active status, or any DB hiccup — auth must not 500 because the subscriptions table sneezed). Cached on `g` so the orchestrator + the existing `@require_tier` decorator share one query.
+- **Curriculum cap** (`backend/config.py` + `orchestrator/_assessment.py`) — added `CURRICULUM_CAPS = {free: 1, pro: 3, power: None}` and `ADAPTER_TIER_MIN = 'pro'`. `start_curriculum` counts the user's non-archived curricula and raises `OrchestratorError(status=402, code='tier_curriculum_cap')` when the cap is hit. Route passes `g.user_tier`.
+- **Adapter gating** (`orchestrator/_tracker.py`) — `_adapter_tier_ok()` helper centralises the rank check. `_run_adapter_if_eligible` now returns `None` for free users so the auto-path call in `submit_exercise` silently skips (free user still gets scoring + tracker rollups). The explicit `run_adapter` route raises `tier_adapter_required` (402) so the iOS layer can show an upgrade CTA. `tier` threaded through `submit_exercise`, `submit_exercise_stream`, `_persist_evaluator_result`, `run_adapter`; the routes pass `g.user_tier`.
+- **Manual grant routes** (`backend/app/routes/admin.py`) — `POST /admin/subscriptions/grant {user_id, tier, days?=30}` upserts the subscriptions row keyed on `user_id`, sets `current_period_end = now + days`, `status='active'`, `started_at=now()` so the admin sees "granted on …", `monthly_price_cents` from `Config.TIER_PRICES_EUR_CENTS`. `POST /admin/subscriptions/revoke {user_id}` snaps the row to free + cancelled, period_end=now. Both behind `@require_auth + @admin_only`. Granting `tier='free'` rejects with a friendlier "use revoke" error.
+- **Self-readback** (`backend/app/routes/auth.py`) — `GET /auth/me/subscription` returns `{tier, status, current_period_end, started_at, monthly_price_cents, currency, effective_tier}`. Synthesises a free-tier response when no row exists / Supabase is down so the iOS layer never has to branch on 404. Also folds `tier` into the existing `GET /auth/me` response.
+
+iOS:
+- **API surface** (`ios/lib/api.ts`) — added `Subscription`, `Tier`, `SubscriptionStatus`, `GrantTierBody`, `GrantTierResponse` types and `api.mySubscription`, `api.adminGrantTier`, `api.adminRevokeTier` methods. New exported `ApiError` class so call sites can branch on `e.body.error` / `e.status` instead of substring-matching the formatted message string. Existing handlers that key off `(e as Error).message` keep working — the message is still the same `"402 PAYMENT REQUIRED: ..."` shape.
+- **Tier badge** (`ios/app/index.tsx`) — small `<TierBadge>` pill rendered in the home-screen hero. Refetches on focus so a freshly-granted Pro lands without a sign-out cycle. Shows tier label (Free/Pro/Power) and an "until Aug 28" expiry hint for paid plans. No settings tab existed yet, so the home screen is where it lives.
+- **402 handling** (`ios/app/curriculum/new.tsx`) — `createCurriculum` rejections with `e.body.error === 'tier_curriculum_cap'` surface as a friendly Alert ("Plan limit reached") with the backend's detail string, instead of dropping the raw "402 PAYMENT REQUIRED: …" into the generic error MessageBox.
+- **Admin grant UI** (`ios/app/admin.tsx`) — Top-spenders list refactored to per-user `<UserRow>` components. Each row shows a coloured tier pill (Free=grey, Pro=brand, Power=brandDeep), the status, and Grant/Revoke buttons. Grant opens a `<GrantTierModal>` with two segmented controls (Pro/Power × 30/90/365 days). Submit POSTs `/admin/subscriptions/grant`, then re-runs the existing `load()` so the row refreshes. Revoke is a confirmation Alert that POSTs `/revoke`. Errors surface as Alerts with the backend's detail string.
+
+Out of scope (deliberate — picked up later):
+- RevenueCat webhook + Apple IAP receipt validation (becomes step 7b in the next-steps list).
+- Free-tier daily exercise rate limit — the brief mentions "limited exercises/day" but the curriculum cap is the higher-leverage gate; revisit when the admin sees free users churning through them.
+
+Sanity checks: TS + Python compile clean (verified via subagent). Runtime check: hit `POST /admin/subscriptions/grant` from the admin dashboard and confirm the recipient's `/auth/me/subscription` flips to `pro`/`power` on next request. Curriculum-cap rejection: try creating a 2nd curriculum as a free user and confirm the Alert fires.
+
+### Lessons in native_language (2026-04-29)
+
+User feedback: lessons should be in the user's native language. The Explainer prompt already nominally said so, but the language clause was buried mid-prompt and the `example` exception was broadly worded ("may use target_language content … when that's what the user is here to learn"), which the model was reading as license to drop wholesale into target_language.
+
+- **Explainer prompt restructured** (`backend/app/agents/explainer.py`) — moved the language rule to the top of the prompt as a non-negotiable LANGUAGE block. Spells out the five prose fields (`concept_title`, `intro`, `key_points`, `pitfalls`, `next_up`) MUST be in `native_language`, period. Tightens the `example` carve-out: prose / commentary / setup is still native; only the artifact being taught (a target-language phrase, a code snippet, a musical term, a formula) may appear in another language, and it must be glossed in native. Adds the "could a monolingual `native_language` user read this?" self-check.
+- Native-form jargon nudge — for languages with established translations of common technical terms (e.g. `bg` → "променлива" instead of "variable") prefer the native form. Proper nouns, framework names, file extensions stay as-is.
+- No DB migration, no client change — purely a prompt strengthening. Existing cached lesson rows keep their content_json; only newly-generated lessons benefit. If we want to retroactively re-translate, we can add a `lessons.regen` admin route later.
+
+### Streaming Evaluator (2026-04-29)
+
+User wanted the post-submit `feedback` and `gap` text to appear progressively instead of after the 3–6s round-trip the synchronous Evaluator used to take. Built end-to-end SSE on the existing `submit_exercise` plumbing — same persistence, same tracker / adapter side-effects, just an additional generator wrapper that yields partial Evaluator snapshots while the model is still typing.
+
+- **Evaluator** (`backend/app/agents/evaluator.py`) — `evaluate_stream()` wraps `client.beta.chat.completions.stream(...)` over the same `evaluator_response` strict json_schema. Yields `{"snapshot": <partial parsed dict>}` on every content delta and a final `{"final": <full dict>, "usage": <obj>}` when the stream closes. Pure agent, no DB.
+- **Orchestrator** (`backend/app/agents/orchestrator/_exercises.py`) — added `submit_exercise_stream()` mirroring `submit_exercise`. Both code paths now share `_prepare_evaluator_call()` (loads + ownership-checks the row, stashes the submission immediately so a crash in the Evaluator can't lose the user's text, builds the canonical-tag-aware payload) and `_persist_evaluator_result()` (writes feedback back to the row, rolls weak_areas / strengths into the curriculum, completes the week if everything in it is evaluated, runs the Adapter fail-soft). Streaming path also calls `usage_meter.record(...)` on the final usage object so the per-call cost ledger gets the same row a synchronous submit would have produced.
+- **Route** `POST /curriculum/exercises/<eid>/submit/stream` (`backend/app/routes/curriculum.py`) — returns `Response(generator, mimetype="text/event-stream")` with `X-Accel-Buffering: no` to defeat proxy buffering on the home VPS. Frame contract: `event: delta` carries `{snapshot}`, `event: done` carries the full ExerciseEvalPayload, `event: error` carries `{error, detail}`. Pre-stream errors (auth, 404 ownership, 409 already-evaluated) come back as normal JSON HTTP responses so the client can branch the same way it does on the sync path.
+- **iOS SSE client** — added `react-native-sse@^1.2.1` to `ios/package.json` (run `npm install` once). `ios/lib/api.ts` exposes `api.submitExerciseStream(token, exerciseId, submission)` returning `AsyncIterable<SubmitStreamFrame>`. The wrapper imports `react-native-sse` via a try/catch — if the package isn't installed yet the iterator emits one `{kind:"error"}` frame and the call site falls back to `submitExercise`. Same fall-back pattern the `Gradient` component uses for missing `expo-linear-gradient`.
+- **iOS UI** — `FeedbackCard.tsx` now accepts an optional `streaming?: { feedback?, gap? }` prop. While that prop is present it renders a neutral "Scoring" tone (no green/red yet, since the verdict isn't trustworthy mid-stream), shows the partial `feedback` and `gap` text live, hides the score / weak_areas / next_focus blocks, and decorates the active text with a blinking caret (`Animated.Value` opacity loop). `ExerciseView.tsx` swaps the "Scoring…" spinner for the streaming card whenever the parent passes `streamingFeedback`.
+- **iOS session screen** (`ios/app/curriculum/session.tsx`) — `submit()` now branches on exercise type. For `short_answer` (and legacy `essay_prompt` rows still in the DB) it consumes `api.submitExerciseStream` and pumps `{feedback, gap}` snapshots into a per-exercise `streamingFeedback` map; the final `done` frame falls into a shared `applyFinal()` helper. Multiple-choice / flashcards keep using the synchronous `submitExercise` — they score in <1s and the SSE round-trip would just add latency. Any error mid-stream falls back to the synchronous endpoint so the user still gets feedback.
+
+Sanity check (deferred to runtime — needs a running backend with a seeded short_answer row): `curl -N -H "Authorization: Bearer <jwt>" -H "Content-Type: application/json" -d '{"submission":{"text":"..."}}' http://localhost:8000/curriculum/exercises/<eid>/submit/stream`. Expect a stream of `event: delta` lines followed by one `event: done` line whose payload matches the row eventually written to `exercises.feedback_json`.
+
 ### Per-answer feedback + bonus drill + retired essays (2026-04-28)
 
 User feedback on the post-submit screen: the **EXPLANATION** block was just restating the question's requirements. The end-of-session view was a single percentage with no recap. Long-form essays felt like homework rather than practice. This change addresses all three plus adds one more learning loop.
@@ -386,7 +430,55 @@ Next, in roughly MVP order:
 2. ~~Assessor agent — adaptive quiz, structured summary in native language.~~ ✅
 3. ~~Planner agent — turn the Assessor summary into a week-by-week plan in `curriculum_weeks`, dispatched by the master Orchestrator.~~ ✅
 4. ~~Exercise Writer + Evaluator — per-week session: generate exercises, render typed UI, submit, get scored feedback.~~ ✅
-5. Tracker + Adapter — progress dashboard, weak-area accumulation, re-plan upcoming weeks.
-6. Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.
-7. RevenueCat → tier enforcement.
+5. ~~Tracker + Adapter — progress dashboard, weak-area accumulation, re-plan upcoming weeks.~~ ✅
+6. ~~Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.~~ ✅
+7. ~~Tier enforcement — manual admin grants, no payments yet.~~ ✅
+7b. RevenueCat → Apple IAP webhook + receipt validation. ← deferred until the user is ready to deal with App Store Connect.
 8. TestFlight submission.
+
+#### Step 6 subtasks — streaming Evaluator (resumable checklist)
+
+Goal: when the user submits a `short_answer` exercise, render the Evaluator's `feedback` + `gap` text progressively (token-by-token feel) instead of after a 3–6s wait. Score / verdict / tags arrive at the end.
+
+Design choice: OpenAI's `client.beta.chat.completions.stream()` over the same `evaluator_response` json_schema. Server forwards each parsed snapshot as one SSE `event: delta`; client renders `feedback` and `gap` strings as they grow. Final `event: done` carries the full row + DB-persisted `id`. The non-streaming `/submit` route stays for back-compat.
+
+Backend:
+- [x] **6a** — `agents/evaluator.py`: add `evaluate_stream(payload) -> Iterator[dict]`. Uses `client.beta.chat.completions.stream(...)`, yields `{"snapshot": <partial parsed dict>}` per content delta; final yield carries `{"final": <full dict>, "usage": <obj>}` for the meter.
+- [x] **6b** — `orchestrator/_exercises.py`: `submit_exercise_stream(...)` mirrors `submit_exercise` but iterates through `evaluate_stream`. Shared side-effects extracted into `_prepare_evaluator_call` + `_persist_evaluator_result` helpers used by both paths.
+- [x] **6c** — `routes/curriculum.py`: `POST /curriculum/exercises/<eid>/submit/stream` returns `Response(generator, mimetype="text/event-stream")`. Emits `event: delta` with snapshot JSON, `event: done` with final row, `event: error` on failure.
+- [x] **6d** — usage_meter: recorded once inside `submit_exercise_stream` using the final usage object before yielding the `done` frame.
+- [ ] **6e** — sanity test: hit `/submit/stream` with `curl -N`. **Deferred** — needs a running backend with a real OpenAI key + seeded `short_answer` row; curl command is logged in the Streaming Evaluator section of the changelog for the user to run locally.
+
+iOS:
+- [x] **6f** — `react-native-sse@^1.2.1` added to `ios/package.json`. **User action remaining: run `npm install` in `ios/`.**
+- [x] **6g** — `lib/api.ts`: `api.submitExerciseStream(token, exerciseId, submission)` returns an `AsyncIterable<SubmitStreamFrame>` (`"delta" | "done" | "error"`). Lazy `require("react-native-sse")` inside try/catch so the file still typechecks before `npm install`.
+- [x] **6h** — `components/session/FeedbackCard.tsx`: `streaming?: { feedback?: string; gap?: string }` prop renders the partial text live with a blinking caret; score/verdict/weak-areas/next-focus are hidden until streaming completes. Last-seen text is buffered in local state so dropped keys don't flash empty.
+- [x] **6i** — `app/curriculum/session.tsx`: `short_answer` and the legacy `essay_prompt` go through `submitExerciseStream`; on stream error or for `multiple_choice` / `flashcard`, falls through to the synchronous `api.submitExercise` path.
+
+QA + docs:
+- [x] **6j** — TS + Python compile clean (verified via subagent).
+- [x] **6k** — SETUP.md: "Streaming Evaluator (2026-04-29)" section added under the Recent changes log; step 6 crossed off the next-steps list above.
+
+Tick each box (`[x]`) as you finish — that way a fresh session can pick up at the first `[ ]` without re-reading the whole codebase.
+
+#### Step 7 subtasks — tier enforcement, manual grants (resumable checklist)
+
+Goal: ship the tier hierarchy (free / pro / power) end-to-end WITHOUT Apple / RevenueCat. The admin can promote a user to pro or power from the admin dashboard for a chosen number of days; everything else (curriculum cap, Adapter gating, /me/subscription readback) keys off the `subscriptions.tier` column. RevenueCat wiring lands as a separate step 7b once the user is ready to deal with App Store Connect.
+
+Already in place from earlier work: `subscriptions` table (migration 009) with `tier`, `status`, `current_period_end`, `revenuecat_id`; `@require_tier` decorator stub in `middleware/tier_check.py`; `@admin_only` gate via `Config.ADMIN_EMAIL`; admin dashboard at `ios/app/admin.tsx`; `TIER_PRICES_EUR_CENTS` in `config.py`. Missing: tier loading, cap enforcement, grant route, grant UI, /me readback.
+
+Backend:
+- [x] **7a** — `middleware/auth.py`: after `g.user_id` is set, look up the user's `subscriptions` row and write `g.user_tier` (default `'free'` when no row exists or status isn't `'active'`). One Supabase call per request, cached on `g`. Unblocks the existing `@require_tier` decorator.
+- [x] **7b** — `config.py`: add `CURRICULUM_CAPS = {"free": 1, "pro": 3, "power": None}` (None = unlimited) and `ADAPTER_TIER_MIN = "pro"`. `orchestrator/_assessment.py` (or wherever `start_curriculum` lives): count active curricula for the user, raise `OrchestratorError(status=402, code="tier_curriculum_cap")` when the cap is reached.
+- [x] **7c** — Tier check centralised in `_TrackerMixin._adapter_tier_ok` and applied at TWO places: `_run_adapter_if_eligible` returns `None` for free users (so the auto path silently skips), `run_adapter` raises `tier_adapter_required` (402) for explicit re-plan calls so the iOS layer can show an upgrade CTA. `tier` threaded through `submit_exercise`, `submit_exercise_stream`, `_persist_evaluator_result`, `run_adapter`; routes pass `g.user_tier`.
+- [x] **7d** — `routes/admin.py`: `POST /admin/subscriptions/grant` (body `{user_id, tier, days?=30}`) upserts the row keyed on `user_id`, sets `current_period_end = now + days`, `status='active'`, `monthly_price_cents` from `Config.TIER_PRICES_EUR_CENTS`. Reset `started_at=now` on every grant so the admin sees "granted on …". `POST /admin/subscriptions/revoke` (body `{user_id}`) resets to free + cancelled. Both behind `@require_auth + @admin_only`. `tier='free'` on grant returns a clearer "use revoke" error.
+- [x] **7e** — `routes/auth.py`: `GET /auth/me/subscription` returns `{tier, status, current_period_end, started_at, monthly_price_cents, currency, effective_tier}`. Synthesises a free-tier response when no row exists or Supabase is down so the iOS layer never has to branch on 404. Also folds `tier` into the existing `GET /auth/me` payload.
+
+iOS:
+- [x] **7f** — `lib/api.ts`: added `Subscription`, `Tier`, `SubscriptionStatus`, `GrantTierBody`, `GrantTierResponse` types + `api.mySubscription`, `api.adminGrantTier`, `api.adminRevokeTier`. New `ApiError` class so call sites can branch on `e.body.error` / `e.status` instead of substring-matching the message. Tier badge lives in the home-screen hero (no settings tab existed yet); `app/curriculum/new.tsx` now catches the 402 `tier_curriculum_cap` `ApiError` and surfaces it as an Alert.
+- [x] **7g** — `app/admin.tsx`: refactored the Top-spenders list into `<UserRow>` components — email + 30-day spend on top, tier pill (Free=grey, Pro=brand, Power=brandDeep) + status + Grant/Revoke buttons on the second line. New `<GrantTierModal>` opens with two segmented controls (Pro/Power × 30/90/365 days), POSTs `/admin/subscriptions/grant`, then re-runs `load()` so the row refreshes. Revoke is a confirm-first Alert that calls `/admin/subscriptions/revoke`.
+
+QA + docs:
+- [x] **7h** — TS + Python compile clean (verified via subagent). SETUP.md: "Tier enforcement — manual grants, no payments yet (2026-04-29)" section added under Recent changes; main next-steps list shows step 7 crossed off and a new `7b.` placeholder for the RevenueCat / Apple IAP wiring.
+
+Tick each box (`[x]`) as you finish.

@@ -20,12 +20,20 @@ POST   /curriculum/lessons/<lid>/seen     mark a lesson as seen
 POST   /curriculum/<id>/exercises         run Exercise Writer for a given week
 GET    /curriculum/<id>/exercises         list exercises (filtered by week_id)
 POST   /curriculum/exercises/<eid>/submit run Evaluator on a submission
+POST   /curriculum/exercises/<eid>/submit/stream
+                                          run Evaluator and stream feedback
+                                          tokens back as Server-Sent Events
 """
-from flask import Blueprint, jsonify, g, request
+import json
+import logging
+
+from flask import Blueprint, Response, jsonify, g, request, stream_with_context
 
 from app.middleware.auth import require_auth
 from app.db.supabase import service_client
 from app.agents.orchestrator import Orchestrator, OrchestratorError
+
+log = logging.getLogger(__name__)
 
 bp = Blueprint("curriculum", __name__, url_prefix="/curriculum")
 
@@ -64,6 +72,7 @@ def create():
             user_id=g.user_id,
             goal=goal,
             native_language=native_language,
+            tier=getattr(g, "user_tier", "free"),
         )
     except OrchestratorError as e:
         return _orch_error(e)
@@ -241,10 +250,95 @@ def submit_exercise(exercise_id):
             user_id=g.user_id,
             exercise_id=exercise_id,
             submission=submission,
+            tier=getattr(g, "user_tier", "free"),
         )
     except OrchestratorError as e:
         return _orch_error(e)
     return jsonify(payload), 200
+
+
+@bp.post("/exercises/<exercise_id>/submit/stream")
+@require_auth
+def submit_exercise_stream(exercise_id):
+    """Server-Sent Events variant of `/submit`.
+
+    Runs the same Evaluator logic + persistence as the non-streaming
+    submit, but streams the model's structured-output JSON snapshots back
+    as `event: delta` frames so the iOS client can render the
+    Evaluator's `feedback` and `gap` text token-by-token instead of
+    waiting ~3-6s for the full response. Score / verdict / tags arrive
+    inside the snapshots too — the client just chooses which fields to
+    render live and which to wait on.
+
+    Frame contract:
+      event: delta   data: {"snapshot": <partial parsed evaluator dict>}
+      event: done    data: <full ExerciseEvalPayload — same shape as
+                            POST /submit returns>
+      event: error   data: {"error": <code>, "detail": <str>}
+
+    Errors that happen BEFORE the stream opens (auth, ownership, conflict
+    on already-evaluated rows) come back as a normal JSON HTTP error so
+    the client can branch the same way it does on the non-streaming
+    path. Errors mid-stream are converted into a single `event: error`
+    frame and the stream is then closed — by that point the response has
+    already started so we can't change the HTTP status.
+    """
+    body = request.get_json(silent=True) or {}
+    submission = body.get("submission")
+    if not isinstance(submission, dict):
+        return jsonify({"error": "submission_required"}), 400
+
+    # Capture the auth identity now — `g` is request-bound and the
+    # generator runs inside `stream_with_context` so it stays valid, but
+    # we copy out the values we need rather than rely on attribute
+    # access during streaming.
+    user_id = g.user_id
+    user_tier = getattr(g, "user_tier", "free")
+    orch = _orch()
+
+    def _sse(event_name: str, payload: dict | str) -> str:
+        data = payload if isinstance(payload, str) else json.dumps(
+            payload, ensure_ascii=False
+        )
+        return f"event: {event_name}\ndata: {data}\n\n"
+
+    @stream_with_context
+    def generate():
+        try:
+            for event in orch.submit_exercise_stream(
+                user_id=user_id,
+                exercise_id=exercise_id,
+                submission=submission,
+                tier=user_tier,
+            ):
+                kind = event.get("kind")
+                if kind == "delta":
+                    yield _sse("delta", {"snapshot": event.get("snapshot") or {}})
+                elif kind == "done":
+                    yield _sse("done", event.get("result") or {})
+        except OrchestratorError as e:
+            log.warning("submit_exercise_stream orch error: %s", e.code)
+            yield _sse("error", {"error": e.code, "detail": str(e)})
+        except Exception as e:  # noqa: BLE001 — must not leave the conn open
+            log.exception("submit_exercise_stream crashed: %s", e)
+            yield _sse(
+                "error",
+                {"error": "internal_error", "detail": str(e)},
+            )
+
+    headers = {
+        # Tell intermediaries (proxies, dev servers) not to buffer.
+        # Without this, nginx/Traefik would hold the response until the
+        # generator closes and the user would see no incremental delta.
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers=headers,
+    )
 
 
 # ---------- tracker / adapter endpoints ----------
@@ -287,6 +381,7 @@ def replan(curriculum_id):
         payload = _orch().run_adapter(
             user_id=g.user_id,
             curriculum_id=curriculum_id,
+            tier=getattr(g, "user_tier", "free"),
         )
     except OrchestratorError as e:
         return _orch_error(e)

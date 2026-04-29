@@ -17,8 +17,20 @@ from typing import Any
 
 from app.agents import adapter as adapter_agent
 from app.agents import tracker
+from app.middleware.tier_check import TIER_RANK
+
+from config import Config
 
 from .errors import NotFound, OrchestratorError
+
+
+def _adapter_tier_ok(tier: str) -> bool:
+    """True when the user's tier meets `ADAPTER_TIER_MIN`. Defensive on
+    unknown tier strings — anything we don't recognise is treated as
+    'free' so we never accidentally hand a free user a paid feature."""
+    have = TIER_RANK.get((tier or "free").lower(), 0)
+    need = TIER_RANK.get(Config.ADAPTER_TIER_MIN, 1)
+    return have >= need
 
 
 class _TrackerMixin:
@@ -54,13 +66,34 @@ class _TrackerMixin:
 
     # ----- write paths (Adapter) -----
 
-    def run_adapter(self, *, user_id: str, curriculum_id: str) -> dict[str, Any]:
+    def run_adapter(
+        self,
+        *,
+        user_id: str,
+        curriculum_id: str,
+        tier: str = "free",
+    ) -> dict[str, Any]:
         """Public form of the adapter — for an explicit "re-plan now"
         button. The auto path goes through `_run_adapter_if_eligible` from
         submit_exercise; this one verifies ownership and re-raises agent
-        errors as OrchestratorErrors so the route layer can surface them."""
+        errors as OrchestratorErrors so the route layer can surface them.
+
+        Tier gate: explicit re-plan is a Pro+ feature. Free users hit a
+        402 here so the iOS layer can show an upgrade CTA. The auto path
+        also tier-checks but soft-skips so a Free user's submit still
+        completes cleanly without the re-plan side effect.
+        """
+        if not _adapter_tier_ok(tier):
+            raise OrchestratorError(
+                code="tier_adapter_required",
+                status=402,
+                detail=(
+                    f"Re-planning is part of {Config.ADAPTER_TIER_MIN.title()}+. "
+                    f"Upgrade to have your curriculum adapt to your performance."
+                ),
+            )
         row = self._load_curriculum(curriculum_id, user_id)
-        result = self._run_adapter_if_eligible(row)
+        result = self._run_adapter_if_eligible(row, tier=tier)
         if result is None:
             return {"changed": False, "reason": "no_upcoming_weeks"}
         return result
@@ -68,11 +101,18 @@ class _TrackerMixin:
     def _run_adapter_if_eligible(
         self,
         curriculum: dict[str, Any],
+        *,
+        tier: str = "free",
     ) -> dict[str, Any] | None:
         """Run the Adapter if there are upcoming weeks to rewrite. Returns
-        None when there's nothing to do (e.g. all weeks complete). Raises
-        OrchestratorError on agent failure — call sites that want fail-soft
-        behaviour need their own try/except."""
+        None when there's nothing to do (e.g. all weeks complete) OR when
+        the user's tier doesn't include Adapter access — the auto-path
+        callers in `_persist_evaluator_result` rely on `None` meaning
+        "skip silently", so the tier check belongs here, not at the
+        call site. Raises OrchestratorError on agent failure — call sites
+        that want fail-soft behaviour need their own try/except."""
+        if not _adapter_tier_ok(tier):
+            return None
         curriculum_id = curriculum["id"]
 
         weeks = (

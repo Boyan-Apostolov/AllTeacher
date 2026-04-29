@@ -76,6 +76,44 @@ export const homeStyles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  // Tier badge — sits in the hero, above the title. Tells the user
+  // which plan is active and (when not free) when it expires.
+  tierBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  tierBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff26",
+    borderWidth: 1,
+    borderColor: "#ffffff55",
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: radii.pill,
+    gap: 6,
+  },
+  tierBadgeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: "#ffffffcc",
+  },
+  tierBadgeText: {
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  tierBadgeMeta: {
+    color: "#ffffff99",
+    fontSize: 11,
+    fontWeight: "600",
+  },
+
   // Cards
   card: {
     backgroundColor: colors.surface,

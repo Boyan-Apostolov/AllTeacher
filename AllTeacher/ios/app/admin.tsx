@@ -23,6 +23,9 @@
  */
 import { useCallback, useState } from "react";
 import {
+  Alert,
+  Modal,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -33,6 +36,7 @@ import { Stack, useFocusEffect, useRouter } from "expo-router";
 
 import {
   api,
+  ApiError,
   type AdminEngagement,
   type AdminOverview,
   type AdminProfit,
@@ -139,6 +143,11 @@ export default function AdminScreen() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Grant-tier modal state. `granting` blocks the row buttons while a
+  // request is in flight; `grantTarget` (when set) opens the modal.
+  const [grantTarget, setGrantTarget] = useState<AdminUser | null>(null);
+  const [granting, setGranting] = useState(false);
 
   const load = useCallback(async () => {
     if (!session?.access_token) return;
@@ -405,31 +414,280 @@ export default function AdminScreen() {
           </View>
         ) : null}
 
-        {/* 7. Top spenders ------------------------------------------ */}
+        {/* 7. Top spenders + manual subscription grants -------------- */}
         {users && users.length > 0 ? (
           <View style={styles.card}>
             <Text style={styles.sectionTitle}>
               Top users by 30-day API cost
             </Text>
-            {users.slice(0, 12).map((u) => (
-              <View key={u.id ?? u.email ?? Math.random()} style={styles.row}>
-                <Text
-                  style={styles.rowLabel}
-                  numberOfLines={1}
-                  ellipsizeMode="tail"
-                >
-                  {u.email ?? "(no email)"}
-                </Text>
-                <Text style={styles.rowValue}>
-                  {fmtMoneyCents(u.cost_cents_window, "USD")}
-                </Text>
-                <Text style={styles.rowHint}>{u.tier}</Text>
-              </View>
+            <Text style={styles.subtleHint}>
+              Tap a user to promote them to Pro/Power. Grants land in the
+              `subscriptions` table and apply on the user's next request.
+            </Text>
+            {users.slice(0, 24).map((u) => (
+              <UserRow
+                key={u.id ?? u.email ?? Math.random()}
+                user={u}
+                disabled={granting}
+                onGrant={() => setGrantTarget(u)}
+                onRevoke={async () => {
+                  if (!session?.access_token || !u.id) return;
+                  Alert.alert(
+                    "Revoke subscription?",
+                    `Drop ${u.email ?? "this user"} back to Free?`,
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Revoke",
+                        style: "destructive",
+                        onPress: async () => {
+                          setGranting(true);
+                          try {
+                            await api.adminRevokeTier(
+                              session.access_token,
+                              u.id!,
+                            );
+                            await load();
+                          } catch (e) {
+                            Alert.alert("Revoke failed", (e as Error).message);
+                          } finally {
+                            setGranting(false);
+                          }
+                        },
+                      },
+                    ],
+                  );
+                }}
+              />
             ))}
           </View>
         ) : null}
       </ScrollView>
+
+      <GrantTierModal
+        target={grantTarget}
+        busy={granting}
+        onClose={() => setGrantTarget(null)}
+        onSubmit={async (tier, days) => {
+          if (!session?.access_token || !grantTarget?.id) return;
+          setGranting(true);
+          try {
+            await api.adminGrantTier(session.access_token, {
+              user_id: grantTarget.id,
+              tier,
+              days,
+            });
+            setGrantTarget(null);
+            await load();
+          } catch (e) {
+            const msg =
+              e instanceof ApiError
+                ? e.body?.detail || e.body?.error || e.message
+                : (e as Error).message;
+            Alert.alert("Grant failed", String(msg));
+          } finally {
+            setGranting(false);
+          }
+        }}
+      />
     </ScreenContainer>
+  );
+}
+
+// --- supporting UI ----------------------------------------------------
+
+/**
+ * One row in the Top users list. Shows the email, the 30-day spend,
+ * a tier badge, and Grant / Revoke action buttons. Revoke is hidden
+ * for users who are already Free — there's nothing to revoke.
+ */
+function UserRow({
+  user,
+  disabled,
+  onGrant,
+  onRevoke,
+}: {
+  user: AdminUser;
+  disabled: boolean;
+  onGrant: () => void;
+  onRevoke: () => void;
+}) {
+  const tier = (user.tier || "free").toLowerCase();
+  const tone =
+    tier === "power"
+      ? styles.tierPillPower
+      : tier === "pro"
+      ? styles.tierPillPro
+      : styles.tierPillFree;
+  return (
+    <View style={styles.userRow}>
+      <View style={styles.userRowTop}>
+        <Text
+          style={styles.rowLabel}
+          numberOfLines={1}
+          ellipsizeMode="tail"
+        >
+          {user.email ?? "(no email)"}
+        </Text>
+        <Text style={styles.rowValue}>
+          {fmtMoneyCents(user.cost_cents_window, "USD")}
+        </Text>
+      </View>
+      <View style={styles.userRowBottom}>
+        <View style={[styles.tierPill, tone]}>
+          <Text style={styles.tierPillText}>{tier.toUpperCase()}</Text>
+        </View>
+        <Text style={styles.rowHint} numberOfLines={1}>
+          {user.status || "free"}
+        </Text>
+        <View style={{ flex: 1 }} />
+        <Pressable
+          style={[styles.actionBtn, disabled && styles.actionBtnDisabled]}
+          onPress={onGrant}
+          disabled={disabled}
+        >
+          <Text style={styles.actionBtnText}>Grant…</Text>
+        </Pressable>
+        {tier !== "free" ? (
+          <Pressable
+            style={[
+              styles.actionBtn,
+              styles.actionBtnGhost,
+              disabled && styles.actionBtnDisabled,
+            ]}
+            onPress={onRevoke}
+            disabled={disabled}
+          >
+            <Text style={styles.actionBtnGhostText}>Revoke</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/**
+ * Modal that picks a tier (Pro / Power) and a period (30 / 90 / 365
+ * days), then calls back. We don't expose Free here — the dedicated
+ * Revoke button is more direct for that case.
+ */
+function GrantTierModal({
+  target,
+  busy,
+  onClose,
+  onSubmit,
+}: {
+  target: AdminUser | null;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (tier: "pro" | "power", days: number) => Promise<void> | void;
+}) {
+  const [tier, setTier] = useState<"pro" | "power">("pro");
+  const [days, setDays] = useState<30 | 90 | 365>(30);
+
+  // Reset selections each time the modal opens for a new user, so a
+  // previous "Power / 365" doesn't leak into the next grant.
+  if (target === null && (tier !== "pro" || days !== 30)) {
+    // Cheap reset on close — runs in render but state setters are
+    // batched, so this is a one-shot transition.
+    setTier("pro");
+    setDays(30);
+  }
+
+  return (
+    <Modal
+      visible={target !== null}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={styles.modalScrim}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>Grant subscription</Text>
+          <Text style={styles.modalSubtitle} numberOfLines={1}>
+            {target?.email ?? "(no email)"}
+          </Text>
+
+          <Text style={styles.modalLabel}>Tier</Text>
+          <View style={styles.segmented}>
+            <SegOption
+              label="Pro"
+              active={tier === "pro"}
+              onPress={() => setTier("pro")}
+            />
+            <SegOption
+              label="Power"
+              active={tier === "power"}
+              onPress={() => setTier("power")}
+            />
+          </View>
+
+          <Text style={styles.modalLabel}>Period</Text>
+          <View style={styles.segmented}>
+            <SegOption
+              label="30 days"
+              active={days === 30}
+              onPress={() => setDays(30)}
+            />
+            <SegOption
+              label="90 days"
+              active={days === 90}
+              onPress={() => setDays(90)}
+            />
+            <SegOption
+              label="1 year"
+              active={days === 365}
+              onPress={() => setDays(365)}
+            />
+          </View>
+
+          <View style={styles.modalActions}>
+            <Pressable
+              style={[styles.actionBtn, styles.actionBtnGhost]}
+              onPress={onClose}
+              disabled={busy}
+            >
+              <Text style={styles.actionBtnGhostText}>Cancel</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+              onPress={() => onSubmit(tier, days)}
+              disabled={busy}
+            >
+              <Text style={styles.actionBtnText}>
+                {busy ? "Granting…" : "Grant"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SegOption({
+  label,
+  active,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={[styles.segOption, active && styles.segOptionActive]}
+      onPress={onPress}
+    >
+      <Text
+        style={[
+          styles.segOptionText,
+          active && styles.segOptionTextActive,
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
   );
 }
 
@@ -527,5 +785,121 @@ const styles = StyleSheet.create({
     width: "100%",
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
+  },
+
+  // --- per-user grant row ---------------------------------------------
+  userRow: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+    gap: 6,
+  },
+  userRowTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  userRowBottom: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  tierPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+  },
+  tierPillFree: {
+    backgroundColor: colors.border,
+  },
+  tierPillPro: {
+    backgroundColor: colors.brand,
+  },
+  tierPillPower: {
+    backgroundColor: colors.brandDeep,
+  },
+  tierPillText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    color: "#fff",
+  },
+  actionBtn: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: radii.pill,
+    backgroundColor: colors.brand,
+  },
+  actionBtnDisabled: {
+    opacity: 0.5,
+  },
+  actionBtnText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  actionBtnGhost: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  actionBtnGhostText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  // --- modal -----------------------------------------------------------
+  modalScrim: {
+    flex: 1,
+    backgroundColor: "#00000099",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  modalTitle: {
+    ...type.h2,
+  },
+  modalSubtitle: {
+    ...type.bodyMuted,
+    marginBottom: spacing.sm,
+  },
+  modalLabel: {
+    ...type.label,
+    marginTop: spacing.sm,
+  },
+  segmented: {
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  segOption: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    alignItems: "center",
+  },
+  segOptionActive: {
+    backgroundColor: colors.brand,
+    borderColor: colors.brand,
+  },
+  segOptionText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  segOptionTextActive: {
+    color: "#fff",
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
   },
 });

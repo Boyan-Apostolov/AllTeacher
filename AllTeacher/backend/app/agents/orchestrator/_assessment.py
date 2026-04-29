@@ -16,6 +16,8 @@ from typing import Any
 
 from app.agents import assessor, planner
 
+from config import Config
+
 from .errors import BadAgentResponse, Conflict, OrchestratorError
 from .types import AssessorStepPayload, PlanPayload
 
@@ -39,8 +41,39 @@ class _AssessmentMixin:
         user_id: str,
         goal: str,
         native_language: str,
+        tier: str = "free",
     ) -> AssessorStepPayload:
-        """Create the curriculum row and run the Assessor's first step."""
+        """Create the curriculum row and run the Assessor's first step.
+
+        Tier check: counts the user's active curricula (any row whose
+        `status` isn't `archived`) and rejects the request when the cap
+        for `tier` is reached. `tier` defaults to 'free' so older
+        callers / tests fall through the strictest gate by default.
+        """
+        cap = Config.CURRICULUM_CAPS.get(tier, Config.CURRICULUM_CAPS["free"])
+        if cap is not None:
+            # Cheap count — only need to know if we're at the limit. We
+            # exclude rows the user has explicitly archived; everything
+            # else counts as "active" (in_progress, complete, paused).
+            active = (
+                self.db.table("curricula")
+                .select("id", count="exact")
+                .eq("user_id", user_id)
+                .neq("status", "archived")
+                .execute()
+            )
+            current = active.count if active.count is not None else len(active.data or [])
+            if current >= cap:
+                raise OrchestratorError(
+                    code="tier_curriculum_cap",
+                    status=402,
+                    detail=(
+                        f"Your {tier} plan supports {cap} active "
+                        f"curricul{'um' if cap == 1 else 'a'}. "
+                        f"Archive an existing track or upgrade to start a new one."
+                    ),
+                )
+
         insert = (
             self.db.table("curricula")
             .insert({

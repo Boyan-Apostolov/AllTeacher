@@ -33,7 +33,7 @@ Scoring rules (the model is told these in the prompt):
 from __future__ import annotations
 
 import json
-from typing import Any, TypedDict
+from typing import Any, Iterator, TypedDict
 
 from openai import OpenAI
 
@@ -156,3 +156,82 @@ def evaluate(payload: EvaluatorInput) -> dict[str, Any]:
 
     raw = completion.choices[0].message.content or "{}"
     return json.loads(raw)
+
+
+# --- streaming variant ---
+
+def evaluate_stream(payload: EvaluatorInput) -> Iterator[dict[str, Any]]:
+    """Streaming variant of :func:`evaluate`.
+
+    Used by the SSE submit endpoint so the iOS client can render the
+    Evaluator's `feedback` and `gap` text token-by-token instead of
+    waiting ~3-6s for the full structured response.
+
+    Yield shapes:
+
+    - ``{"snapshot": <partial parsed dict>}`` — repeated as content
+      streams in. Fields appear progressively (score and verdict tend
+      to land first, then `feedback` grows character-by-character, then
+      `gap`, then the tag arrays). The dict matches RESPONSE_SCHEMA but
+      may be missing trailing keys until the model finishes.
+    - ``{"final": <full dict>, "usage": <openai usage obj>}`` — emitted
+      exactly once after the stream closes. The caller (orchestrator
+      wrapper) is responsible for ``usage_meter.record(...)`` with the
+      final usage object so the meter event is logged once with the
+      completed token counts — we don't record inside this generator
+      because the caller may want to attribute usage differently
+      depending on context.
+
+    The OpenAI SDK's ``client.beta.chat.completions.stream(...)`` wraps
+    the same json_schema strict-mode response and uses an internal
+    partial-JSON parser to surface ``event.parsed`` on each content
+    delta. We pass through whatever it gives us; if a particular SDK
+    version does not populate ``parsed`` for raw json_schema dicts the
+    snapshot stream will simply be empty and the client falls back to
+    the final dict.
+    """
+    client = _client()
+
+    with client.beta.chat.completions.stream(
+        model=Config.OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        ],
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "evaluator_response",
+                "schema": RESPONSE_SCHEMA,
+                "strict": True,
+            },
+        },
+        temperature=0.1,
+    ) as stream:
+        last_snapshot: dict[str, Any] | None = None
+        for event in stream:
+            # Only "content.delta" carries an in-progress parsed dict in
+            # the SDKs we care about. Other event types (tool_calls,
+            # refusal, etc.) are not relevant for the evaluator.
+            if getattr(event, "type", None) != "content.delta":
+                continue
+            snap = getattr(event, "parsed", None)
+            if snap is None:
+                # Some SDK versions expose the running snapshot via the
+                # full ChatCompletion object on the event instead.
+                running = getattr(event, "snapshot", None)
+                try:
+                    snap = running.choices[0].message.parsed  # type: ignore[union-attr]
+                except (AttributeError, IndexError, TypeError):
+                    snap = None
+            if snap is None or snap == last_snapshot:
+                continue
+            last_snapshot = snap
+            yield {"snapshot": snap}
+
+        final = stream.get_final_completion()
+        msg = final.choices[0].message
+        parsed = getattr(msg, "parsed", None)
+        if parsed is None:
+            parsed = json.loads(msg.content or "{}")
+        yield {"final": parsed, "usage": final.usage}

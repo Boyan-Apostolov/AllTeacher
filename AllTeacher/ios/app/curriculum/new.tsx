@@ -6,6 +6,7 @@
  */
 import { useMemo, useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   NativeModules,
   Platform,
@@ -17,7 +18,7 @@ import {
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { LanguagePicker } from "@/components/curriculum";
 import {
@@ -84,7 +85,20 @@ export default function NewCurriculumScreen() {
       });
       router.replace(`/curriculum/${res.id}`);
     } catch (e) {
-      setError((e as Error).message);
+      // Tier-cap rejections (402 tier_curriculum_cap) are user-actionable,
+      // not bugs — surface them as an Alert with the upgrade message
+      // straight from the backend instead of dropping a "402" string into
+      // the generic error MessageBox.
+      if (e instanceof ApiError && e.body?.error === "tier_curriculum_cap") {
+        Alert.alert(
+          "Plan limit reached",
+          e.body.detail ||
+            "Your plan supports a limited number of active curricula. Archive an existing track or upgrade to start a new one.",
+          [{ text: "OK" }],
+        );
+      } else {
+        setError((e as Error).message);
+      }
     } finally {
       setSubmitting(false);
     }

@@ -79,6 +79,13 @@ export default function SessionScreen() {
   // the bonus CTA hides itself once the drill has been started.
   const [bonusIds, setBonusIds] = useState<Set<string>>(new Set());
   const [bonusStarted, setBonusStarted] = useState(false);
+  // Live SSE Evaluator output for the currently-submitting exercise.
+  // Keyed by exercise id so we don't clobber state if the user retries
+  // before the previous stream closes. Cleared once the stream emits its
+  // final 'done' frame and the row flips to 'evaluated'.
+  const [streamingFeedback, setStreamingFeedback] = useState<
+    Record<string, { feedback?: string; gap?: string }>
+  >({});
 
   // Per-phase loading flags so transitions feel instant when there's
   // nothing to fetch but show a spinner when we're hitting the LLM.
@@ -380,6 +387,7 @@ export default function SessionScreen() {
     if (!active || !session?.access_token) return;
     setError(null);
     const id = active.id;
+    const exType = active.content_json.type;
     setExercises((cur) =>
       cur.map((e) =>
         e.id === id
@@ -387,12 +395,19 @@ export default function SessionScreen() {
           : e,
       ),
     );
-    try {
-      const res = await api.submitExercise(
-        session.access_token,
-        id,
-        submission,
-      );
+
+    // Apply the final Evaluator result to the exercise row + clear any
+    // streaming partial. Pulled out so the streaming and non-streaming
+    // paths land in exactly the same shape.
+    const applyFinal = (res: {
+      score: number;
+      verdict: ExerciseFeedback["verdict"];
+      feedback: string;
+      gap?: string;
+      weak_areas: string[];
+      strengths?: string[];
+      next_focus: string;
+    }) => {
       const feedback: ExerciseFeedback = {
         score: res.score,
         verdict: res.verdict,
@@ -418,13 +433,99 @@ export default function SessionScreen() {
             : e,
         ),
       );
-    } catch (e) {
-      setError((e as Error).message);
+      setStreamingFeedback((cur) => {
+        if (!(id in cur)) return cur;
+        const { [id]: _drop, ...rest } = cur;
+        return rest;
+      });
+    };
+
+    const onError = (msg: string) => {
+      setError(msg);
       setExercises((cur) =>
         cur.map((ex) =>
           ex.id === id ? { ...ex, status: "pending" } : ex,
         ),
       );
+      setStreamingFeedback((cur) => {
+        if (!(id in cur)) return cur;
+        const { [id]: _drop, ...rest } = cur;
+        return rest;
+      });
+    };
+
+    // Streaming path — only worthwhile for `short_answer` (legacy
+    // `essay_prompt` rows still in the DB share the same long-form
+    // feedback shape so we stream those too). Multiple-choice and
+    // flashcards score in <1s; the SSE round-trip overhead would just
+    // slow them down. Any failure mid-stream falls through to the
+    // non-streaming path so the user still gets feedback.
+    const shouldStream = exType === "short_answer" || exType === "essay_prompt";
+
+    if (shouldStream) {
+      // Initialise an empty streaming entry so ExerciseView can swap
+      // the spinner for the streaming card immediately on submit.
+      setStreamingFeedback((cur) => ({ ...cur, [id]: { feedback: "", gap: "" } }));
+      try {
+        let gotDone = false;
+        for await (const frame of api.submitExerciseStream(
+          session.access_token,
+          id,
+          submission,
+        )) {
+          if (frame.kind === "delta") {
+            const snap = frame.snapshot;
+            setStreamingFeedback((cur) => ({
+              ...cur,
+              [id]: {
+                feedback:
+                  typeof snap.feedback === "string"
+                    ? snap.feedback
+                    : cur[id]?.feedback,
+                gap:
+                  typeof snap.gap === "string"
+                    ? snap.gap
+                    : cur[id]?.gap,
+              },
+            }));
+          } else if (frame.kind === "done") {
+            gotDone = true;
+            applyFinal(frame.payload);
+            break;
+          } else if (frame.kind === "error") {
+            // Fall back to the non-streaming submit so the user still
+            // gets feedback. We don't surface the SSE error to the user
+            // unless the fallback also fails — streaming is an
+            // optimisation, not a contract.
+            // eslint-disable-next-line no-console
+            console.warn("submit stream error, falling back:", frame);
+            break;
+          }
+        }
+        if (gotDone) return;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("submit stream threw, falling back:", e);
+      }
+      // Streaming path didn't yield a final result — fall through to
+      // the regular POST below. Drop the streaming placeholder so the
+      // spinner shows during the fallback.
+      setStreamingFeedback((cur) => {
+        if (!(id in cur)) return cur;
+        const { [id]: _drop, ...rest } = cur;
+        return rest;
+      });
+    }
+
+    try {
+      const res = await api.submitExercise(
+        session.access_token,
+        id,
+        submission,
+      );
+      applyFinal(res);
+    } catch (e) {
+      onError((e as Error).message);
     }
   };
 
@@ -553,6 +654,7 @@ export default function SessionScreen() {
           onSubmit={submit}
           onNext={next}
           isLast={isLast}
+          streamingFeedback={streamingFeedback[active.id]}
         />
       );
     }

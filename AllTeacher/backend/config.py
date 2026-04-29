@@ -61,6 +61,24 @@ class Config:
         "power": 1900,
     }
 
+    # Per-tier capacity caps. None = unlimited.
+    #   - CURRICULUM_CAPS: max concurrently-active curricula a user can
+    #     own. Free users finish or archive the existing one before
+    #     starting another track. Power is uncapped.
+    # Enforcement lives in `orchestrator/_assessment.py::start_curriculum`
+    # — raises 402 `tier_curriculum_cap` when exceeded.
+    CURRICULUM_CAPS: dict[str, int | None] = {
+        "free":  1,
+        "pro":   3,
+        "power": None,
+    }
+
+    # Minimum tier required to receive Adapter (re-planner) re-runs after
+    # exercise submissions. Free users still get scoring + tracker
+    # updates; the Adapter is the "your plan adapts to you" Pro hook.
+    # Soft-skipped at the orchestrator level — never fails a submit.
+    ADAPTER_TIER_MIN: str = "pro"
+
     @classmethod
     def is_configured(cls) -> dict:
         """Quick check for /health to show which integrations are wired."""

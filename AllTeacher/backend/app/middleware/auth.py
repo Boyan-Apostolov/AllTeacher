@@ -15,12 +15,15 @@ Usage:
         ...
 """
 from functools import wraps
+from datetime import datetime, timezone
+
 import jwt
 from jwt import PyJWKClient
 from flask import request, jsonify, g
 
 from config import Config
 from app.services import usage_meter
+from app.db.supabase import service_client
 
 
 _jwks_client: PyJWKClient | None = None
@@ -95,6 +98,14 @@ def require_auth(fn):
         g.user_email = payload.get("email")
         g.jwt_payload = payload
 
+        # Tier loading. One Supabase call per request; cached on `g` so
+        # repeat reads inside the request (the orchestrator + the
+        # @require_tier decorator both want it) don't re-query. Default
+        # 'free' for any of: missing row, expired period, non-active
+        # status, or DB unreachable. Best-effort — auth must NOT fail
+        # because the subscriptions lookup hiccupped.
+        g.user_tier = _load_user_tier(g.user_id)
+
         # Open a per-request usage scope so any agent call on this
         # request stream lands in the right user's ledger. The matching
         # flush() runs in app.teardown_request — that fires whether or
@@ -116,6 +127,53 @@ def require_auth(fn):
         return fn(*args, **kwargs)
 
     return wrapped
+
+
+def _load_user_tier(user_id: str | None) -> str:
+    """Resolve the user's effective subscription tier.
+
+    Returns one of: 'free', 'pro', 'power'. Defaults to 'free' for
+    every error case (missing row, expired period, non-active status,
+    Supabase unreachable). The tier hierarchy is enforced upstream by
+    `tier_check.TIER_RANK`.
+    """
+    if not user_id:
+        return "free"
+    db = service_client()
+    if db is None:
+        return "free"
+    try:
+        rows = (
+            db.table("subscriptions")
+            .select("tier,status,current_period_end")
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        ).data or []
+    except Exception:
+        return "free"
+    if not rows:
+        return "free"
+    sub = rows[0]
+    if (sub.get("status") or "").lower() != "active":
+        return "free"
+    period_end = sub.get("current_period_end")
+    if period_end:
+        # Supabase returns ISO 8601 strings; parse defensively. A None
+        # period_end means "no expiry" (e.g. an admin grant the user
+        # marked permanent), so we let those through as-is.
+        try:
+            ts = datetime.fromisoformat(period_end.replace("Z", "+00:00"))
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            if ts < datetime.now(timezone.utc):
+                return "free"
+        except (ValueError, AttributeError):
+            pass
+    tier = (sub.get("tier") or "free").lower()
+    if tier not in ("free", "pro", "power"):
+        return "free"
+    return tier
 
 
 def admin_only(fn):

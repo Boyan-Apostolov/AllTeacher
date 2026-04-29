@@ -13,6 +13,7 @@ import {
   BASE_URL,
   type CurriculumListItem,
   type HealthResponse,
+  type Subscription,
 } from "@/lib/api";
 import { useAuth, useAdmin } from "@/lib/auth";
 import { CurriculumRow, DiagPill } from "@/components/home";
@@ -22,6 +23,37 @@ import { pickGreeting } from "@/lib/curriculum";
 import { colors, spacing, type } from "@/lib/theme";
 
 import { homeStyles as styles } from "./index.styles";
+
+/**
+ * Small inline pill that surfaces the user's current plan in the
+ * hero. Hidden until the /me/subscription fetch lands so we don't
+ * flash "Free" for every user on first paint. When the subscription
+ * is paid we also show a one-line "until <date>" hint so the user
+ * knows when an admin-granted period runs out.
+ */
+function TierBadge({ subscription }: { subscription: Subscription | null }) {
+  if (!subscription) return null;
+  const tier = subscription.effective_tier ?? subscription.tier;
+  const label =
+    tier === "power" ? "Power" : tier === "pro" ? "Pro" : "Free";
+  const expiry = subscription.current_period_end;
+  const expiryText =
+    tier !== "free" && expiry
+      ? `until ${new Date(expiry).toLocaleDateString(undefined, {
+          month: "short",
+          day: "numeric",
+        })}`
+      : null;
+  return (
+    <View style={styles.tierBadge}>
+      <View style={styles.tierBadgeDot} />
+      <Text style={styles.tierBadgeText}>{label}</Text>
+      {expiryText ? (
+        <Text style={styles.tierBadgeMeta}>· {expiryText}</Text>
+      ) : null}
+    </View>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -35,6 +67,10 @@ export default function Home() {
 
   const [curricula, setCurricula] = useState<CurriculumListItem[] | null>(null);
   const [curriculaError, setCurriculaError] = useState<string | null>(null);
+
+  // Subscription / tier badge in the hero. Refetched on focus so a
+  // freshly-granted Pro lands without making the user fully sign out.
+  const [subscription, setSubscription] = useState<Subscription | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +103,13 @@ export default function Home() {
         .listCurricula(token)
         .then((res) => !cancelled && setCurricula(res.curricula))
         .catch((e: Error) => !cancelled && setCurriculaError(e.message));
+      // Subscription pulls alongside curricula so the badge reflects
+      // any admin-grant change since the last focus. Failure is
+      // non-blocking — the badge just hides.
+      api
+        .mySubscription(token)
+        .then((s) => !cancelled && setSubscription(s))
+        .catch(() => !cancelled && setSubscription(null));
       return () => {
         cancelled = true;
       };
@@ -120,7 +163,10 @@ export default function Home() {
           angle={140}
           style={styles.hero}
         >
-          <Text style={styles.heroEyebrow}>AllTeacher</Text>
+          <View style={styles.tierBadgeRow}>
+            <Text style={styles.heroEyebrow}>AllTeacher</Text>
+            <TierBadge subscription={subscription} />
+          </View>
           <Text style={styles.heroTitle}>
             {greeting}, {firstName} 👋
           </Text>

@@ -2,19 +2,24 @@
 
 Owns the lifecycle of per-week exercise rows:
 
-  - generate_exercises   → bank lookup + LLM top-up + per-user rows
-  - submit_exercise      → store submission, score it, record weak areas
-  - _maybe_complete_week → flip `curriculum_weeks.status` once everything
-                           in the week has been evaluated
+  - generate_exercises       → bank lookup + LLM top-up + per-user rows
+  - submit_exercise          → store submission, score it, record weak areas
+  - submit_exercise_stream   → same, but yields Evaluator partial snapshots
+                               for the SSE endpoint (long-form short_answer
+                               feedback rendered token-by-token on iOS)
+  - _maybe_complete_week     → flip `curriculum_weeks.status` once everything
+                               in the week has been evaluated
 
 The Exercise Writer + Evaluator agents themselves stay pure; this mixin
 owns the bank reads/writes, ownership checks, and the per-user bookkeeping.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Iterator
 
+from config import Config
 from app.agents import evaluator, exercise_bank, exercise_writer, tracker
+from app.services import usage_meter
 
 from ._base import now_iso
 from .errors import Conflict, NotFound, OrchestratorError
@@ -322,9 +327,144 @@ class _ExercisesMixin:
         user_id: str,
         exercise_id: str,
         submission: dict[str, Any],
+        tier: str = "free",
     ) -> ExerciseEvalPayload:
         """Persist the user's submission, dispatch the Evaluator, write the
-        feedback back to the exercise row, return the verdict."""
+        feedback back to the exercise row, return the verdict.
+
+        `tier` controls whether the post-evaluator Adapter run fires —
+        free users skip it silently (their submit still scores + writes
+        back the feedback row in full)."""
+        ex, curriculum, payload = self._prepare_evaluator_call(
+            user_id=user_id,
+            exercise_id=exercise_id,
+            submission=submission,
+        )
+
+        try:
+            result = evaluator.evaluate(payload)
+        except Exception as e:
+            raise OrchestratorError(
+                code="evaluator_failed",
+                status=500,
+                detail=str(e),
+            )
+
+        return self._persist_evaluator_result(
+            user_id=user_id,
+            exercise=ex,
+            curriculum=curriculum,
+            result=result,
+            tier=tier,
+        )
+
+    def submit_exercise_stream(
+        self,
+        *,
+        user_id: str,
+        exercise_id: str,
+        submission: dict[str, Any],
+        tier: str = "free",
+    ) -> Iterator[dict[str, Any]]:
+        """Streaming variant of :meth:`submit_exercise`.
+
+        Used by the SSE endpoint so the iOS client can render the
+        Evaluator's `feedback` and `gap` text token-by-token instead of
+        waiting ~3-6s for the full structured response.
+
+        Yield shapes:
+
+        - ``{"kind": "delta", "snapshot": <partial parsed dict>}`` —
+          repeated as the Evaluator's structured-output JSON is still
+          materialising. The iOS client renders ``feedback`` and ``gap``
+          live and waits to render ``score`` / ``verdict`` / tags until
+          they land.
+        - ``{"kind": "done", "result": <ExerciseEvalPayload>}`` — emitted
+          exactly once after the stream closes. By the time this lands,
+          the same persistence + tracker + adapter side-effects that
+          ``submit_exercise`` performs have all run.
+
+        Errors during streaming raise ``OrchestratorError`` so the route
+        can convert them into ``event: error`` SSE frames the same way
+        the non-streaming path returns them as JSON 5xxs.
+        """
+        ex, curriculum, payload = self._prepare_evaluator_call(
+            user_id=user_id,
+            exercise_id=exercise_id,
+            submission=submission,
+        )
+
+        # The streaming SDK call is wrapped in our own try/except so a
+        # mid-stream failure surfaces as the same `evaluator_failed`
+        # OrchestratorError the non-streaming path raises. Without this
+        # the route layer would see a raw OpenAIError and 500 with no
+        # code the client can branch on.
+        result: dict[str, Any] | None = None
+        usage_obj: Any = None
+        try:
+            for event in evaluator.evaluate_stream(payload):
+                if "snapshot" in event:
+                    yield {"kind": "delta", "snapshot": event["snapshot"]}
+                    continue
+                if "final" in event:
+                    result = event["final"]
+                    usage_obj = event.get("usage")
+        except OrchestratorError:
+            raise
+        except Exception as e:  # noqa: BLE001 — surface as orchestrator error
+            raise OrchestratorError(
+                code="evaluator_failed",
+                status=500,
+                detail=str(e),
+            )
+
+        if result is None:
+            raise OrchestratorError(
+                code="evaluator_failed",
+                status=500,
+                detail="streaming evaluator returned no final result",
+            )
+
+        # Record the call against the per-request usage scope opened in
+        # `require_auth`. We can't have the agent itself call `record(...)`
+        # like the non-streaming path does because `evaluate_stream` is a
+        # generator and the caller decides when the stream actually
+        # completes — the meter row should only land once the final
+        # snapshot arrives. Best-effort, swallowed inside usage_meter.
+        if usage_obj is not None:
+            usage_meter.record(
+                model=Config.OPENAI_MODEL,
+                usage=usage_obj,
+                agent="evaluator",
+            )
+
+        final_payload = self._persist_evaluator_result(
+            user_id=user_id,
+            exercise=ex,
+            curriculum=curriculum,
+            result=result,
+            tier=tier,
+        )
+        yield {"kind": "done", "result": final_payload}
+
+    # ----- shared evaluator helpers (used by both submit paths) -----
+
+    def _prepare_evaluator_call(
+        self,
+        *,
+        user_id: str,
+        exercise_id: str,
+        submission: dict[str, Any],
+    ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+        """Common prelude for `submit_exercise` and `submit_exercise_stream`.
+
+        Loads + ownership-checks the exercise, ensures it isn't already
+        scored, stashes the submission immediately (so a crash in the LLM
+        call doesn't lose what the user typed), and builds the Evaluator
+        payload — including the canonical-tag lists from the curriculum so
+        the model can reuse existing weak_areas / strengths verbatim
+        instead of coining near-duplicates.
+        """
         ex = self._load_exercise(exercise_id, user_id)
         if ex.get("status") == "evaluated":
             raise Conflict(code="exercise_already_evaluated")
@@ -361,16 +501,29 @@ class _ExercisesMixin:
                 curriculum.get("recent_strengths") or []
             ),
         }
+        return ex, curriculum, payload
 
-        try:
-            result = evaluator.evaluate(payload)
-        except Exception as e:
-            raise OrchestratorError(
-                code="evaluator_failed",
-                status=500,
-                detail=str(e),
-            )
+    def _persist_evaluator_result(
+        self,
+        *,
+        user_id: str,
+        exercise: dict[str, Any],
+        curriculum: dict[str, Any],
+        result: dict[str, Any],
+        tier: str = "free",
+    ) -> ExerciseEvalPayload:
+        """Common tail for `submit_exercise` and `submit_exercise_stream`:
+        write the feedback back to the exercise row, roll weak_areas /
+        strengths into the curriculum, complete the week if everything in
+        it is evaluated, kick the Adapter (fail-soft), and assemble the
+        ExerciseEvalPayload the client receives.
 
+        Splitting this out keeps the streaming path in lockstep with the
+        non-streaming one — both must execute the same side effects in the
+        same order so tracker state stays consistent regardless of which
+        endpoint the iOS client called.
+        """
+        exercise_id = exercise["id"]
         evaluated_at = now_iso()
         update_row = {
             "feedback_json": result,
@@ -410,7 +563,7 @@ class _ExercisesMixin:
         # parent curriculum_weeks row to status='complete'. That's what the
         # home progress bar and the per-course detail screen key off of to
         # show "session done".
-        week_just_completed = self._maybe_complete_week(ex.get("week_id"))
+        week_just_completed = self._maybe_complete_week(exercise.get("week_id"))
 
         # When a session just flipped complete, run the Adapter so the
         # upcoming weeks reflect what the user has actually demonstrated.
@@ -419,9 +572,11 @@ class _ExercisesMixin:
         if week_just_completed:
             try:
                 # Re-load the curriculum so the Adapter sees the just-merged
-                # weak_areas / strengths / last_active_at.
+                # weak_areas / strengths / last_active_at. Free users
+                # silently no-op inside `_run_adapter_if_eligible` based
+                # on tier — they still get scoring + tracker rollups.
                 fresh = self._load_curriculum(curriculum["id"], user_id)
-                self._run_adapter_if_eligible(fresh)
+                self._run_adapter_if_eligible(fresh, tier=tier)
             except Exception:
                 # Swallow — the Adapter is best-effort here. The user can
                 # still re-trigger via the explicit re-plan endpoint.
