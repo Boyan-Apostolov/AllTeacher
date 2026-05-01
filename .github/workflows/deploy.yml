@@ -28,13 +28,15 @@ jobs:
       - name: Push Docker image
         run: docker push ${{ secrets.DOCKER_USERNAME }}/allteacher-backend
 
-      - name: Deploy on server via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SERVER_IP }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SERVER_SSH_KEY }}
-          script: |
-            docker pull ${{ secrets.DOCKER_USERNAME }}/allteacher-backend
-            docker compose -f ~/flask-app/docker-compose.yml down
-            docker compose -f ~/flask-app/docker-compose.yml up -d
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.SERVER_IP }} << 'EOF'
+            docker pull bobby156/allteacher-backend:latest || true
+
+            docker stop allteacher || true
+            docker rm allteacher || true
+
+            docker run -d \
+              --name allteacher \
+              -p 8000:8000 \
+              bobby156/allteacher-backend:latest
