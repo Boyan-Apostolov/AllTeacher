@@ -1,0 +1,44 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+      - deploy-backend
+#
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Debug key
+        run: echo "${{ secrets.SERVER_SSH_KEY }}"
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build Docker image (FROM BACKEND)
+        run: docker build -t ${{ secrets.DOCKER_USERNAME }}/allteacher-backend ././AllTeacher/backend
+
+      - name: Push Docker image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/allteacher-backend
+
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no root@${{ secrets.SERVER_IP }} << 'EOF'
+            docker pull bobby156/allteacher-backend:latest || true
+
+            docker stop allteacher || true
+            docker rm allteacher || true
+
+            docker run -d \
+              --name allteacher \
+              -p 8000:8000 \
+              --env-file /root/allteacher/.env \
+              bobby156/allteacher-backend:latest
