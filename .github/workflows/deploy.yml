@@ -40,4 +40,4 @@ jobs:
               --name allteacher \
               -p 8000:8000 \
               --env-file /root/allteacher/.env \
-              yourdockerhubuser/allteacher-backend:latest
+              bobby156/allteacher-backend:latest
