@@ -17,14 +17,12 @@
     "android": {
       "package": "com.allteacher.app"
     },
-    "plugins": [
-      "expo-router"
-    ],
+    "plugins": ["expo-router"],
     "experiments": {
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "http://localhost:8000",
+      "apiUrl": "https://allteacher-be.boyan-apostolov.live",
       "router": {
         "origin": false
       },
