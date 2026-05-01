@@ -22,7 +22,7 @@
       "typedRoutes": true
     },
     "extra": {
-      "apiUrl": "https://allteacher-be.boyan-apostolov.live",
+      "apiUrl": "http://localhost:8000",
       "router": {
         "origin": false
       },
