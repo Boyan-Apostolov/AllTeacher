@@ -39,4 +39,5 @@ jobs:
             docker run -d \
               --name allteacher \
               -p 8000:8000 \
-              bobby156/allteacher-backend:latest
+              --env-file /root/allteacher/.env \
+              yourdockerhubuser/allteacher-backend:latest
