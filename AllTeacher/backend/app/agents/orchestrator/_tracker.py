@@ -72,16 +72,17 @@ class _TrackerMixin:
         user_id: str,
         curriculum_id: str,
         tier: str = "free",
+        difficulty_boost: bool = False,
     ) -> dict[str, Any]:
-        """Public form of the adapter — for an explicit "re-plan now"
-        button. The auto path goes through `_run_adapter_if_eligible` from
-        submit_exercise; this one verifies ownership and re-raises agent
-        errors as OrchestratorErrors so the route layer can surface them.
+        """Public form of the adapter — for an explicit "re-plan now" button
+        or the "Make it harder" action.
 
-        Tier gate: explicit re-plan is a Pro+ feature. Free users hit a
-        402 here so the iOS layer can show an upgrade CTA. The auto path
-        also tier-checks but soft-skips so a Free user's submit still
-        completes cleanly without the re-plan side effect.
+        `difficulty_boost=True` injects an extra instruction into the adapter
+        payload asking the model to raise the difficulty ceiling across all
+        upcoming weeks without shrinking the plan.
+
+        Tier gate: explicit re-plan (and difficulty boost) is a Pro+ feature.
+        Free users hit a 402 so the iOS layer can show an upgrade CTA.
         """
         if not _adapter_tier_ok(tier):
             raise OrchestratorError(
@@ -93,7 +94,9 @@ class _TrackerMixin:
                 ),
             )
         row = self._load_curriculum(curriculum_id, user_id)
-        result = self._run_adapter_if_eligible(row, tier=tier)
+        result = self._run_adapter_if_eligible(
+            row, tier=tier, difficulty_boost=difficulty_boost
+        )
         if result is None:
             return {"changed": False, "reason": "no_upcoming_weeks"}
         return result
@@ -103,6 +106,7 @@ class _TrackerMixin:
         curriculum: dict[str, Any],
         *,
         tier: str = "free",
+        difficulty_boost: bool = False,
     ) -> dict[str, Any] | None:
         """Run the Adapter if there are upcoming weeks to rewrite. Returns
         None when there's nothing to do (e.g. all weeks complete) OR when
@@ -191,7 +195,7 @@ class _TrackerMixin:
         }
 
         try:
-            result = adapter_agent.adapt(payload)
+            result = adapter_agent.adapt(payload, difficulty_boost=difficulty_boost)
         except Exception as e:
             raise OrchestratorError(
                 code="adapter_failed",

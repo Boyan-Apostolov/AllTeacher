@@ -366,6 +366,26 @@ Out of scope (deliberate — picked up later):
 
 User actions remaining: `cd ios && npm install`; apply `010_multimodal_exercise_types.sql` in Supabase SQL editor; optionally pre-create the `exercise-audio` bucket as Public if the service-role key can't create buckets (the helper tries idempotently on first use).
 
+### Curriculum action buttons — "Add more sessions" + "Make it harder" (2026-05-03)
+
+Two new buttons appear on the curriculum detail screen once a plan is generated, below the ProgressStrip and above the week cards.
+
+**Add more sessions** — generates 5 bonus exercises that target the user's recent weak areas (`focus_weak_areas: true`). No new weeks are created; exercises are inserted with `module_index=null` so the session screen groups them under its bonus phase. After completion a brief success banner appears on the plan screen.
+
+**Make it harder** — replans all upcoming weeks with an elevated difficulty ceiling. Under the hood it calls the existing `/curriculum/<id>/replan` route with `{"difficulty_boost": true}`. The Adapter receives an extra injected instruction telling it to remove scaffolding, use harder vocabulary, and increase pace — without shrinking the plan or skipping topics. Pro+ only (free users see a 402 error in the banner). After completion the week cards refresh automatically.
+
+**Code changes**:
+- `backend/app/agents/adapter.py` — `adapt()` now accepts `difficulty_boost: bool`. When true, a `[DIFFICULTY BOOST REQUESTED]` block is appended to the user message.
+- `backend/app/agents/orchestrator/_tracker.py` — `run_adapter()` + `_run_adapter_if_eligible()` forward `difficulty_boost` to the agent.
+- `backend/app/routes/curriculum.py` — `POST /curriculum/<id>/replan` reads `difficulty_boost` from the request body.
+- `ios/lib/api.ts` — `addMoreSessions()` and `makeHarder()` API helpers.
+- `ios/app/curriculum/[id].tsx` — `addingSessions`, `makingHarder`, `actionBanner` state; `addMoreSessions()` + `makeHarder()` handlers; two-column button row + success banner in JSX.
+- `ios/app/curriculum/[id].styles.ts` — `actionRow`, `actionBtn*`, `actionBanner*` styles.
+
+No new migrations needed. No user action required.
+
+---
+
 ### Sign in with Apple (2026-05-03)
 
 Apple Sign In added to the login and signup screens. Users can authenticate with a single tap using their Apple ID — no email/password required. Supabase handles the token exchange server-side.

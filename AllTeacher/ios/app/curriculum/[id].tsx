@@ -11,7 +11,7 @@
  *   • session.tsx invalidates the cache prefix when a session finishes.
  */
 import { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import {
   Stack,
   useLocalSearchParams,
@@ -83,6 +83,9 @@ export default function CurriculumScreen() {
 
   const [progress, setProgress] = useState<CurriculumProgressDetail | null>(null);
   const [replanning, setReplanning] = useState(false);
+  const [addingSessions, setAddingSessions] = useState(false);
+  const [makingHarder, setMakingHarder] = useState(false);
+  const [actionBanner, setActionBanner] = useState<string | null>(null);
 
   // ── Apply a fetched curriculum row to local state ──────────────────────
   const applyRow = useCallback((row: CurriculumRow) => {
@@ -234,6 +237,48 @@ export default function CurriculumScreen() {
     }
   };
 
+  const addMoreSessions = async () => {
+    if (!id || !session?.access_token) return;
+    setAddingSessions(true);
+    setError(null);
+    setActionBanner(null);
+    try {
+      const token = session.access_token;
+      // Generate 5 bonus exercises targeting weak areas. No new weeks needed.
+      await api.addMoreSessions(token, id);
+      await cacheDelPrefix(`curriculum:${id}`);
+      const p = await api.getCurriculumProgress(token, id).catch(() => null);
+      if (p) { setProgress(p); await cacheSet(ck(id).progress, p); }
+      setActionBanner("Bonus exercises added! Open any week to practise them.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddingSessions(false);
+    }
+  };
+
+  const makeHarder = async () => {
+    if (!id || !session?.access_token) return;
+    setMakingHarder(true);
+    setError(null);
+    setActionBanner(null);
+    try {
+      const token = session.access_token;
+      await api.makeHarder(token, id);
+      await cacheDelPrefix(`curriculum:${id}`);
+      // Reload weeks + progress so the updated plan is visible immediately.
+      const w = await api.getWeeks(token, id).catch(() => null);
+      if (w) { setWeeks(w.weeks); await cacheSet(ck(id).weeks, w.weeks); }
+      const p = await api.getCurriculumProgress(token, id).catch(() => null);
+      if (p) { setProgress(p); await cacheSet(ck(id).progress, p); }
+      setActionBanner("Plan updated — upcoming weeks are now more challenging.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setMakingHarder(false);
+    }
+  };
+
   const generatePlan = async () => {
     if (!id || !session?.access_token) return;
     setPlanning(true);
@@ -315,6 +360,48 @@ export default function CurriculumScreen() {
                 onOpenDashboard={() => router.push("/progress")}
               />
             ) : null}
+
+            {/* Action buttons */}
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnPrimary,
+                  addingSessions && styles.actionBtnDisabled,
+                ]}
+                onPress={addMoreSessions}
+                disabled={addingSessions || makingHarder}
+              >
+                {addingSessions ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.actionBtnText}>＋ Add more sessions</Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnSecondary,
+                  makingHarder && styles.actionBtnDisabled,
+                ]}
+                onPress={makeHarder}
+                disabled={addingSessions || makingHarder}
+              >
+                {makingHarder ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.actionBtnText}>🔥 Make it harder</Text>
+                )}
+              </Pressable>
+            </View>
+
+            {actionBanner ? (
+              <View style={styles.actionBanner}>
+                <Text style={styles.actionBannerText}>{actionBanner}</Text>
+              </View>
+            ) : null}
+
             <PlanView
               plan={plan}
               weeks={weeks ?? []}

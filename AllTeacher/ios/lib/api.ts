@@ -674,6 +674,38 @@ export const api = {
       headers: authHeaders(token),
     }),
 
+  /**
+   * "Add more sessions" — generate a bonus batch of exercises that
+   * target the user's weak areas. No new weeks; inserts exercises with
+   * module_index=null so the session screen groups them separately.
+   */
+  addMoreSessions: (token: string, curriculumId: string, weekId?: string) =>
+    request<GenerateExercisesResponse>(
+      `/curriculum/${curriculumId}/exercises`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          focus_weak_areas: true,
+          count: 5,
+          ...(weekId ? { week_id: weekId } : {}),
+        }),
+      },
+    ),
+
+  /**
+   * "Make it harder" — replan upcoming weeks with an explicit difficulty
+   * boost. Backed by the same Adapter as `replan` but injects an extra
+   * instruction that raises the challenge ceiling across all upcoming weeks.
+   * Pro+ only (backend returns 402 for free tier).
+   */
+  makeHarder: (token: string, curriculumId: string) =>
+    request<ReplanResponse>(`/curriculum/${curriculumId}/replan`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ difficulty_boost: true }),
+    }),
+
   // --- Admin (boian4934@gmail.com only — backend returns 404 otherwise) ---
 
   adminOverview: (token: string) =>
