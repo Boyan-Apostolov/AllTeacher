@@ -32,6 +32,7 @@ import {
   type PlanModule,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { cacheDelPrefix } from "@/lib/cache";
 import {
   ExerciseView,
   FinishedView,
@@ -204,6 +205,18 @@ export default function SessionScreen() {
       cancelled = true;
     };
   }, [curriculumId, weekId, session?.access_token]);
+
+  // When the session reaches the finished phase, invalidate the curriculum
+  // cache so the detail screen and home screen show fresh progress on the
+  // user's next visit (without needing an auto-refresh).
+  useEffect(() => {
+    if (phase !== "finished" || !curriculumId) return;
+    cacheDelPrefix(`curriculum:${curriculumId}`);
+    // Also bust the home screen curricula list so progress bars update.
+    // We don't have the userId here, so wipe all home cache entries that
+    // reference this curriculum — prefix match covers it.
+    cacheDelPrefix(`home:`);
+  }, [phase, curriculumId]);
 
   // 2. When the lesson screen needs content and we don't have it yet,
   //    fetch (or generate via the Explainer) for the active module.

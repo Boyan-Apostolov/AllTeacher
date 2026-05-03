@@ -2,11 +2,16 @@
  * Home screen — pure orchestration. Owns the data fetches and the
  * navigation; rendering is delegated to components in `components/home/`
  * and the shared `components/ui/` primitives.
+ *
+ * Caching strategy: cache-first, pull-to-refresh.
+ *   • Cached curricula + subscription are shown instantly on mount.
+ *   • No automatic background refresh on focus — swipe-down only.
+ *   • Cache is invalidated by session.tsx after a session finishes.
  */
-import { useCallback, useEffect, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 
 import {
   api,
@@ -16,6 +21,7 @@ import {
   type Subscription,
 } from "@/lib/api";
 import { useAuth, useAdmin } from "@/lib/auth";
+import { cacheGet, cacheSet, cacheDel } from "@/lib/cache";
 import { CurriculumRow, DiagPill } from "@/components/home";
 import { LoadingBlock, MessageBox } from "@/components/ui";
 import { Gradient } from "@/components/Gradient";
@@ -24,13 +30,6 @@ import { colors, spacing, type } from "@/lib/theme";
 
 import { homeStyles as styles } from "./index.styles";
 
-/**
- * Small inline pill that surfaces the user's current plan in the
- * hero. Hidden until the /me/subscription fetch lands so we don't
- * flash "Free" for every user on first paint. When the subscription
- * is paid we also show a one-line "until <date>" hint so the user
- * knows when an admin-granted period runs out.
- */
 function TierBadge({ subscription }: { subscription: Subscription | null }) {
   if (!subscription) return null;
   const tier = subscription.effective_tier ?? subscription.tier;
@@ -68,80 +67,131 @@ export default function Home() {
   const [curricula, setCurricula] = useState<CurriculumListItem[] | null>(null);
   const [curriculaError, setCurriculaError] = useState<string | null>(null);
 
-  // Subscription / tier badge in the hero. Refetched on focus so a
-  // freshly-granted Pro lands without making the user fully sign out.
   const [subscription, setSubscription] = useState<Subscription | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    api
-      .health()
-      .then((h) => !cancelled && setHealth(h))
-      .catch((e: Error) => !cancelled && setHealthError(e.message));
-    if (session?.access_token) {
-      api
-        .me(session.access_token)
-        .then(() => !cancelled && setMeOk(true))
-        .catch((e: Error) => {
-          if (cancelled) return;
-          setMeOk(false);
-          setMeError(e.message);
-        });
-    }
-    return () => {
-      cancelled = true;
-    };
-  }, [session?.access_token]);
+  // true only during an explicit pull-to-refresh — NOT on initial mount.
+  const [refreshing, setRefreshing] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!session?.access_token) return;
-      let cancelled = false;
-      const token = session.access_token;
+  const userId = user?.id ?? session?.user?.id;
+
+  // Cache keys scoped to the user so switching accounts doesn't bleed data.
+  const ckCurricula   = userId ? `home:${userId}:curricula`    : null;
+  const ckSubscription = userId ? `home:${userId}:subscription` : null;
+
+  // ── Initial mount: hydrate from cache then fetch diagnostics ──────────
+  useEffect(() => {
+    if (!session?.access_token || !userId) return;
+    const token = session.access_token;
+    let cancelled = false;
+
+    // Health + /me are cheap diagnostics — always fetch fresh.
+    api.health()
+      .then((h) => { if (!cancelled) setHealth(h); })
+      .catch((e: Error) => { if (!cancelled) setHealthError(e.message); });
+    api.me(token)
+      .then(() => { if (!cancelled) setMeOk(true); })
+      .catch((e: Error) => {
+        if (cancelled) return;
+        setMeOk(false);
+        setMeError(e.message);
+      });
+
+    // Curricula + subscription: show cache instantly, then load from API
+    // only if we have nothing yet (first run or cache cleared).
+    (async () => {
+      if (ckCurricula) {
+        const cached = await cacheGet<CurriculumListItem[]>(ckCurricula);
+        if (!cancelled && cached) setCurricula(cached);
+      }
+      if (ckSubscription) {
+        const cached = await cacheGet<Subscription>(ckSubscription);
+        if (!cancelled && cached) setSubscription(cached);
+      }
+
+      // Only hit the API if we didn't have cached data.
+      const hasCurriculaCache = ckCurricula
+        ? !!(await cacheGet(ckCurricula))
+        : false;
+
+      if (!hasCurriculaCache) {
+        await fetchCurricula(token, false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.access_token, userId]);
+
+  // ── Data fetchers ──────────────────────────────────────────────────────
+  const fetchCurricula = useCallback(
+    async (token: string, bust: boolean) => {
       setCurriculaError(null);
-      api
-        .listCurricula(token)
-        .then((res) => !cancelled && setCurricula(res.curricula))
-        .catch((e: Error) => !cancelled && setCurriculaError(e.message));
-      // Subscription pulls alongside curricula so the badge reflects
-      // any admin-grant change since the last focus. Failure is
-      // non-blocking — the badge just hides.
-      api
-        .mySubscription(token)
-        .then((s) => !cancelled && setSubscription(s))
-        .catch(() => !cancelled && setSubscription(null));
-      return () => {
-        cancelled = true;
-      };
-    }, [session?.access_token]),
+      try {
+        const res = await api.listCurricula(token);
+        setCurricula(res.curricula);
+        if (ckCurricula) await cacheSet(ckCurricula, res.curricula);
+      } catch (e: any) {
+        setCurriculaError((e as Error).message);
+      }
+    },
+    [ckCurricula],
   );
 
+  const fetchSubscription = useCallback(
+    async (token: string) => {
+      try {
+        const s = await api.mySubscription(token);
+        setSubscription(s);
+        if (ckSubscription) await cacheSet(ckSubscription, s);
+      } catch {
+        setSubscription(null);
+      }
+    },
+    [ckSubscription],
+  );
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────
+  const onRefresh = useCallback(async () => {
+    if (!session?.access_token) return;
+    setRefreshing(true);
+    const token = session.access_token;
+    await Promise.all([
+      fetchCurricula(token, true),
+      fetchSubscription(token),
+    ]);
+    setRefreshing(false);
+  }, [session?.access_token, fetchCurricula, fetchSubscription]);
+
+  // ── Mutations ──────────────────────────────────────────────────────────
   const removeCurriculum = (c: CurriculumListItem) => {
     if (!session?.access_token) return;
     const token = session.access_token;
     const label = c.goal || c.topic || "this curriculum";
     Alert.alert(
       "Remove curriculum?",
-      `“${label}” and all its data will be deleted. This can't be undone.`,
+      `"${label}" and all its data will be deleted. This can't be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Remove",
           style: "destructive",
           onPress: async () => {
+            // Optimistic update.
             setCurricula((prev) =>
               prev ? prev.filter((x) => x.id !== c.id) : prev,
             );
             try {
               await api.deleteCurriculum(token, c.id);
+              // Bust cache so the removed item doesn't reappear on next cold open.
+              if (ckCurricula) await cacheDel(ckCurricula);
             } catch (e) {
               setCurriculaError((e as Error).message);
+              // Revert optimistic update.
               try {
                 const res = await api.listCurricula(token);
                 setCurricula(res.curricula);
-              } catch {
-                /* ignore */
-              }
+                if (ckCurricula) await cacheSet(ckCurricula, res.curricula);
+              } catch { /* ignore */ }
             }
           },
         },
@@ -154,7 +204,16 @@ export default function Home() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand}
+          />
+        }
+      >
         {/* Hero */}
         <Gradient
           from={colors.brand}
@@ -186,9 +245,6 @@ export default function Home() {
             >
               <Text style={styles.heroCtaGhostText}>📈 Progress</Text>
             </Pressable>
-            {/* Hidden tab — only the configured ADMIN_EMAIL ever
-                sees this; the backend also 404s the routes for
-                everyone else, so this is purely a UX hint. */}
             {isAdmin ? (
               <Pressable
                 style={styles.heroCtaGhost}
