@@ -90,6 +90,9 @@ class WriterInput(TypedDict, total=False):
                                             # users (TTS isn't free) so we don't
                                             # waste model budget on items that
                                             # would be dropped post-generation.
+    video_enabled: bool                     # gates the `video_choice` type.
+                                            # Orchestrator sets False when
+                                            # YOUTUBE_API_KEY is not configured.
     count: int                              # how many exercises to generate
 
 
@@ -123,6 +126,17 @@ Types — pick the right one per item; mix types across the batch:
 - flashcard: front (cue) + back (answer). Self-graded by the user. Vocabulary, terminology, formulas, repertoire hooks.
 - short_answer: open prompt where the user types a free-text response. Use this for translation, definitions, problem-set numericals — AND for longer writing/explanation/critique tasks. For longer prompts include `rubric` (3–5 bullets) so the Evaluator can grade by criteria. `expected` may be a model answer (short types) OR a brief sketch of what a good response covers (longer types).
 - listen_choice: ALLOWED ONLY WHEN `listening_enabled` is true AND `target_language` is set AND domain is language-flavoured (vocabulary, conversation, grammar, listening comprehension). Set `audio_text` to one short phrase or sentence in `target_language` (typically 3–15 words, never more than 25), `language` to `target_language` (the BCP-47 code), `prompt_native` to a short native-language question that frames what the user is listening for ("What does the speaker say?", "Which option matches what you heard?", "Pick the correct translation"). Set `options` (3–4 items, in `native_language` for comprehension exercises, in `target_language` only when the user is choosing the spelling/form they heard) and `correct_index`. Skip this type entirely for code/math/fitness/professional domains — listening doesn't earn its keep there.
+- video_choice: ALLOWED ONLY WHEN `video_enabled` is true. Use for topics where seeing is genuinely better than reading: real-world demonstrations (cooking technique, exercise form, instrument playing, pronunciation), cultural scenes, science experiments, historical footage, nature/geography, hands-on skills. NOT for pure vocabulary, abstract math, grammar rules, or coding concepts. Set `video_query` to a concise 3–8 word YouTube search query that will find a short, focused educational clip (e.g. "how to do a proper squat form", "French nasal vowels pronunciation", "basic knife skills chopping"). Set `prompt` to a concrete comprehension question the user must answer AFTER watching (in `native_language` — what was the key technique, what did the speaker demonstrate, what should you do first, etc.). Set `options` (3–4 answers in `native_language`) and `correct_index`. Keep questions factual and answerable from a 30–90 second clip.
+
+IMAGE QUERY — default to INCLUDING an image. Set `image_query` to a short 2–5 word Unsplash search query for the vast majority of exercises. The query should name the concrete subject being tested or illustrated — not the exercise mechanics.
+
+ALWAYS set `image_query` for: vocabulary (the word/object being learned, e.g. "apple fruit", "red bicycle", "wooden chair"), food and cooking, animals, nature, sports and fitness, travel and geography, cultural practices, professions, emotions and body language, science objects, musical instruments, historical scenes, everyday objects.
+
+For LANGUAGE exercises specifically: use the thing being named/translated as the query. "What is the Bulgarian word for apple?" → "apple fruit". "How do you say 'beach' in French?" → "sandy beach waves". The image shows what the word means, making the exercise visceral.
+
+Leave `image_query` EMPTY ONLY for: pure math equations or proofs, abstract programming syntax (loops, operators, pointers), grammar conjugation rules with no tangible referent, logic puzzles. When in doubt, pick an image — a slightly tangential photo beats no visual at all.
+
+Good queries: "apple fruit", "red bicycle", "yoga warrior pose", "Bulgarian rose harvest", "fresh pasta kitchen", "violin bow technique". Bad queries: "learning", "concept", "abstract", "exercise", "quiz".
 
 Quality: keep each exercise doable in ~2 minutes; longer writing prompts may take ~5 min. Calibrate difficulty to `level`. Honor `exercise_focus` (if empty, derive from week modules + objective). Honor `learning_style`. Skip any title in `seen_titles`; if a topic must repeat, vary phrasing AND angle.
 
@@ -146,6 +160,7 @@ EXERCISE_TYPE_ENUM = [
     "flashcard",
     "short_answer",
     "listen_choice",
+    "video_choice",
 ]
 
 EXERCISE_SCHEMA = {
@@ -166,18 +181,23 @@ EXERCISE_SCHEMA = {
             "type": "array",
             "items": {"type": "string"},
         },
-        # listen_choice fields — empty for non-audio types. The
-        # orchestrator generates `audio_url` post-Writer (TTS round-trip)
-        # and stuffs it into content_json before the DB insert; the
-        # Writer only emits the *text* to be spoken plus the framing.
+        # listen_choice — orchestrator generates audio_url post-Writer
+        # via TTS and stuffs it into content_json before the DB insert.
         "audio_text": {"type": "string"},
         "language": {"type": "string"},
         "prompt_native": {"type": "string"},
+        # video_choice — orchestrator resolves video_url post-Writer via
+        # YouTube Data API v3 and stores it in content_json.
+        "video_query": {"type": "string"},
+        # image_query — any type. Orchestrator resolves to image_url via
+        # Unsplash API. Empty string = no image for this exercise.
+        "image_query": {"type": "string"},
     },
     "required": [
         "type", "title", "prompt", "options", "correct_index",
         "front", "back", "expected", "rubric",
         "audio_text", "language", "prompt_native",
+        "video_query", "image_query",
     ],
     "additionalProperties": False,
 }
@@ -221,23 +241,30 @@ def _strip_empty(ex: dict[str, Any]) -> dict[str, Any]:
         "multiple_choice": ["prompt", "options", "correct_index"],
         "flashcard": ["front", "back"],
         "short_answer": ["prompt", "expected", "rubric"],
-        # listen_choice carries audio_text + language + prompt_native
-        # alongside the standard MCQ fields. `audio_url` lands later,
-        # post-TTS, via the orchestrator — not part of the Writer's
-        # output and so not in the keep list here.
+        # listen_choice: audio_url is injected post-Writer by the
+        # orchestrator via TTS — not in the Writer output.
         "listen_choice": [
             "audio_text", "language", "prompt_native",
             "options", "correct_index",
         ],
+        # video_choice: video_url is injected post-Writer by the
+        # orchestrator via YouTube API — not in the Writer output.
+        "video_choice": [
+            "video_query", "prompt", "options", "correct_index",
+        ],
     }
     for k in keep_by_type.get(t, []):
         v = ex.get(k)
-        # always include — even if empty — so the UI has a stable shape.
         out[k] = v if v is not None else ("" if isinstance(v, str) else v)
         if v is None:
             out[k] = [] if k in ("options", "rubric") else (
                 0 if k == "correct_index" else ""
             )
+    # image_query is type-agnostic — keep it on any exercise where the
+    # Writer filled it in. The orchestrator resolves it to image_url.
+    image_query = (ex.get("image_query") or "").strip()
+    if image_query:
+        out["image_query"] = image_query
     return out
 
 

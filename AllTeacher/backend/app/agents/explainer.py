@@ -21,10 +21,12 @@ Output shape:
                                    #   target_language phrases as needed
   "pitfalls": ["...", "..."],      # common misconceptions, may be empty
   "next_up": "...",                # one-line bridge into the exercises
-  "diagram_mermaid": "..."         # optional Mermaid diagram source. Empty
+  "diagram_mermaid": "...",        # optional Mermaid diagram source. Empty
                                    #   string when the concept doesn't earn a
                                    #   visual. iOS renders it client-side via
                                    #   a WebView + mermaid.min.js.
+  "image_query": "..."             # optional Unsplash search query (2–5 words).
+                                   #   Empty string when no photo adds value.
 }
 """
 from __future__ import annotations
@@ -123,6 +125,26 @@ level-based defaults above.
 `next_up` is one short sentence that hands off to the exercises ("Now
 let's practice ..."), in `native_language`.
 
+IMAGE QUERY — `image_query`:
+Default to INCLUDING an image. Set `image_query` to a short 2–5 word Unsplash
+search query for almost every lesson. Pick something that makes the concept
+feel immediately real and concrete to the learner.
+
+For language/vocabulary lessons: the central object or scene being taught
+("apple orchard", "Bulgarian market stall", "French bakery bread").
+For cultural lessons: the place, tradition, or artifact ("flamenco dancer",
+"Tokyo street food", "Bulgarian rose valley").
+For skills (cooking, fitness, music, etc.): the action or tool ("chef knife
+technique", "yoga downward dog", "violin bow closeup").
+For science or nature: the phenomenon or organism ("water cycle diagram" is bad —
+a photo works better: "rainstorm clouds dark", "frog on leaf").
+
+Leave `image_query` EMPTY only for: abstract programming syntax (variable
+declarations, operators), pure math equations, or grammar rules with zero
+tangible referent. When in doubt, include a photo — a slightly imperfect
+image is better than a wall of text. The photo appears at the top of the
+lesson card as a visual hook before the intro paragraph.
+
 DIAGRAMS — `diagram_mermaid`:
 Optional. Default to an EMPTY STRING. Emit a Mermaid diagram source ONLY
 when the concept genuinely has structure that a picture clarifies more
@@ -176,10 +198,13 @@ RESPONSE_SCHEMA = {
         # Empty string when the concept doesn't earn a diagram. Required
         # by strict schema; iOS treats "" as "no diagram, render text only".
         "diagram_mermaid": {"type": "string"},
+        # Empty string when no photo adds value. Orchestrator resolves to
+        # image_url via Unsplash API and stores it in content_json.
+        "image_query": {"type": "string"},
     },
     "required": [
         "concept_title", "intro", "key_points", "example",
-        "pitfalls", "next_up", "diagram_mermaid",
+        "pitfalls", "next_up", "diagram_mermaid", "image_query",
     ],
     "additionalProperties": False,
 }

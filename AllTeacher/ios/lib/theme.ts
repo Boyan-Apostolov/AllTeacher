@@ -68,7 +68,7 @@ export const colors = {
  * Legacy `essay_prompt` rows fall back to `multiple_choice`.
  */
 export const typeAccent: Record<
-  "multiple_choice" | "flashcard" | "short_answer",
+  "multiple_choice" | "flashcard" | "short_answer" | "listen_choice" | "video_choice",
   { fg: string; bg: string; gradientFrom: string; gradientTo: string; emoji: string; label: string }
 > = {
   multiple_choice: {
@@ -94,6 +94,22 @@ export const typeAccent: Record<
     gradientTo: "#FFB020",
     emoji: "✏️",
     label: "Short answer",
+  },
+  listen_choice: {
+    fg: "#0BC5C2",
+    bg: "#CFF2F1",
+    gradientFrom: "#67E8F9",
+    gradientTo: "#0BC5C2",
+    emoji: "🔊",
+    label: "Listening",
+  },
+  video_choice: {
+    fg: "#E84545",
+    bg: "#F8D8D8",
+    gradientFrom: "#FF7070",
+    gradientTo: "#E84545",
+    emoji: "🎬",
+    label: "Watch & answer",
   },
 };
 

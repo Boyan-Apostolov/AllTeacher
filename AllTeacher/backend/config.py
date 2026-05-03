@@ -26,6 +26,11 @@ class Config:
 
     REVENUECAT_WEBHOOK_SECRET = os.getenv("REVENUECAT_WEBHOOK_SECRET", "")
 
+    # Third-party media APIs — optional. If not set, the orchestrator
+    # silently skips video_choice generation and image decoration.
+    YOUTUBE_API_KEY  = os.getenv("YOUTUBE_API_KEY", "")
+    UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+
     # Admin dashboard gating. Only requests whose verified Supabase JWT
     # email matches ADMIN_EMAIL get through the @admin_only decorator.
     # Single-account by design — there is one operator (us). Add a

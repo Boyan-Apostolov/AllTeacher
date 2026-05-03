@@ -3,7 +3,8 @@
  * Concept Sticker header, white card with ink border, pitfall box,
  * example box, PrimaryCta "Start exercises →" in flash teal.
  */
-import { Text, View } from "react-native";
+import { useState } from "react";
+import { Image, Text, View } from "react-native";
 
 import { PrimaryCta } from "@/components/ui";
 import { Sticker } from "@/components/ui/Sticker";
@@ -26,6 +27,9 @@ export function LessonView({
 }) {
   const c = lesson.content_json;
   const title = c.concept_title || lesson.concept_title || "Lesson";
+  // Hide the whole "Visual" section if the diagram fails to parse/render,
+  // so no empty labelled box flickers on screen.
+  const [diagramFailed, setDiagramFailed] = useState(false);
 
   return (
     <View style={styles.container}>
@@ -36,6 +40,24 @@ export function LessonView({
         </Sticker>
         <Text style={styles.title}>{title}</Text>
       </View>
+
+      {/* Unsplash hero photo — shown when the Explainer provided an
+          image_query that the orchestrator resolved to an image_url.
+          Sits above the content card so it reads as a visual hook
+          before the text. */}
+      {c.image_url ? (
+        <Image
+          source={{ uri: c.image_url }}
+          style={{
+            width: "100%",
+            height: 180,
+            borderRadius: 16,
+            borderWidth: 2,
+            borderColor: colors.ink,
+          }}
+          resizeMode="cover"
+        />
+      ) : null}
 
       {/* Content card */}
       <View style={styles.card}>
@@ -62,10 +84,13 @@ export function LessonView({
           </View>
         ) : null}
 
-        {c.diagram_mermaid && c.diagram_mermaid.trim().length > 0 ? (
+        {c.diagram_mermaid && c.diagram_mermaid.trim().length > 0 && !diagramFailed ? (
           <View>
             <Text style={styles.sectionLabel}>Visual</Text>
-            <MermaidDiagram source={c.diagram_mermaid} />
+            <MermaidDiagram
+              source={c.diagram_mermaid}
+              onError={() => setDiagramFailed(true)}
+            />
           </View>
         ) : null}
 

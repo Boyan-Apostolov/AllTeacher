@@ -14,7 +14,7 @@
  * multiple-choice and flashcards score instantly so streaming would
  * just add latency.
  */
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Image, Text, View } from "react-native";
 
 import type {
   ExerciseFeedback,
@@ -31,6 +31,7 @@ import { Flashcard } from "./Flashcard";
 import { ListenChoice } from "./ListenChoice";
 import { MultipleChoice } from "./MultipleChoice";
 import { ShortAnswer } from "./ShortAnswer";
+import { VideoChoice } from "./VideoChoice";
 
 // Empty-but-typed feedback used when we render the streaming card BEFORE
 // the final ExerciseFeedback exists. FeedbackCard ignores these defaults
@@ -80,6 +81,22 @@ export function ExerciseView({
     <View style={{ gap: spacing.lg }}>
       <ExerciseHeader exercise={exercise} index={index} total={total} />
 
+      {/* Unsplash photo — shown for any exercise type that has one,
+          except video_choice (the video is the visual centrepiece). */}
+      {c.image_url && c.type !== "video_choice" ? (
+        <Image
+          source={{ uri: c.image_url }}
+          style={{
+            width: "100%",
+            height: 160,
+            borderRadius: 14,
+            borderWidth: 2,
+            borderColor: colors.ink,
+          }}
+          resizeMode="cover"
+        />
+      ) : null}
+
       {c.type === "multiple_choice" ? (
         <MultipleChoice
           content={c}
@@ -107,6 +124,14 @@ export function ExerciseView({
           submission={exercise.submission_json}
           disabled={submitting || evaluated}
           onRate={(rating) => onSubmit({ self_rating: rating })}
+        />
+      ) : c.type === "video_choice" ? (
+        <VideoChoice
+          key={exercise.id}
+          content={c}
+          submission={exercise.submission_json}
+          disabled={submitting || evaluated}
+          onPick={(idx) => onSubmit({ choice_index: idx })}
         />
       ) : c.type === "short_answer" || c.type === "essay_prompt" ? (
         // essay_prompt is legacy — fall through to ShortAnswer so

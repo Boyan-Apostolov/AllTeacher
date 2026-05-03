@@ -24,6 +24,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents import explainer
+from app.services import media
+from config import Config
 
 from ._base import now_iso
 from .errors import Conflict, NotFound, OrchestratorError
@@ -106,7 +108,38 @@ class _LessonsMixin:
             persisted = existing_row[0]
             content = persisted.get("content_json") or {}
             if content:  # don't trust an empty row — fall through to regen
-                return _to_payload(persisted)
+                # Back-fill image_url on cached lessons that were generated
+                # before the Unsplash feature landed (they have no image_url).
+                # Derive a query from concept_title + domain when image_query
+                # is absent — same fallback logic as _materialise_images.
+                if Config.UNSPLASH_ACCESS_KEY and not content.get("image_url"):
+                    summary_c = (row.get("assessment_json") or {}).get("summary") or {}
+                    domain_c = row.get("domain") or summary_c.get("domain") or ""
+                    q = (content.get("image_query") or "").strip()
+                    if not q:
+                        title_c = (
+                            content.get("concept_title")
+                            or persisted.get("concept_title")
+                            or ""
+                        ).strip()
+                        if title_c:
+                            q = (
+                                f"{title_c} {domain_c}".strip()
+                                if domain_c and len(title_c.split()) <= 3
+                                else title_c
+                            )
+                    if q:
+                        img_url = media.unsplash_photo_url(q)
+                        if img_url:
+                            content["image_url"] = img_url
+                            # Persist so the next cache hit already has the URL.
+                            try:
+                                self.db.table("lessons").update(
+                                    {"content_json": content}
+                                ).eq("id", persisted["id"]).execute()
+                            except Exception:
+                                pass  # non-fatal — image still shown this request
+                return _to_payload({**persisted, "content_json": content})
 
         # Cache miss — run the Explainer.
         summary = (row.get("assessment_json") or {}).get("summary") or {}
@@ -155,6 +188,32 @@ class _LessonsMixin:
                 status=500,
                 detail=str(e),
             )
+
+        # Unsplash image — resolve to a photo URL and store in content_json
+        # so the iOS lesson card shows a visual hook above the intro.
+        # Priority: (1) Explainer-provided image_query; (2) concept_title +
+        # domain fallback so abstract/coding topics still get a photo even
+        # when the Explainer correctly leaves image_query empty.
+        # Fails soft — lesson is still returned without an image on error.
+        if Config.UNSPLASH_ACCESS_KEY and not content.get("image_url"):
+            _q = (content.get("image_query") or "").strip()
+            if not _q:
+                _title = (
+                    content.get("concept_title")
+                    or concept.get("title")
+                    or ""
+                ).strip()
+                _domain = row.get("domain") or summary.get("domain") or ""
+                if _title:
+                    _q = (
+                        f"{_title} {_domain}".strip()
+                        if _domain and len(_title.split()) <= 3
+                        else _title
+                    )
+            if _q:
+                _img = media.unsplash_photo_url(_q)
+                if _img:
+                    content["image_url"] = _img
 
         insert_row = {
             "curriculum_id": curriculum_id,

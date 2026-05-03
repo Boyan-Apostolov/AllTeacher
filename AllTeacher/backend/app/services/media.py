@@ -1,32 +1,22 @@
-"""Audio + image media services.
+"""Audio + image + video media services.
 
-Today this module owns ONE thing: text-to-speech for `listen_choice`
-exercises. The Exercise Writer outputs the *text* to be spoken (in the
-user's `target_language`); after the Writer returns and before the
-orchestrator inserts rows, we call OpenAI TTS, upload the resulting
-mp3 to a public Supabase Storage bucket, and stuff the public URL into
-`content_json.audio_url`.
+Owns:
+  - tts_to_url         → OpenAI TTS → Supabase Storage → public URL
+  - unsplash_photo_url → Unsplash API → photo URL for a query
+  - youtube_search_url → YouTube Data API v3 → embed URL for a query
 
-Image generation (DALL-E / `gpt-image-1`) for visual lessons + an
-`image_match` exercise type is the obvious next caller of this file —
-shape it the same way: deterministic key, cache-on-storage, return URL.
-
-Keys are deterministic content hashes (`sha256(text + voice + model)`),
-which means re-running the Exercise Writer with the same content_text
-re-uses the same audio file instead of re-spending TTS budget. The
-trade-off: a key collision (two different texts hashing to the same
-prefix) would silently re-serve the wrong audio. We use the full 64-hex
-sha256 for the filename, so collisions are not a real concern.
-
-Failure mode: every public function fails *soft* — it returns `None`
-on any error rather than raising, so the orchestrator can drop the
-exercise row instead of taking down the user's session. Telemetry is
-best-effort via `usage_meter`.
+All public functions fail *soft* (return None on any error) so the
+orchestrator can skip media decoration rather than crash a user session.
+Keys for audio are deterministic content hashes (sha256) so re-running
+with the same text reuses the cached file.
 """
 from __future__ import annotations
 
 import hashlib
 import logging
+import urllib.parse
+import urllib.request
+import json as _json
 from typing import Any
 
 from openai import OpenAI
@@ -37,6 +27,94 @@ from app.services import usage_meter
 
 
 log = logging.getLogger(__name__)
+
+
+# --- Unsplash ---------------------------------------------------------
+
+def unsplash_photo_url(query: str) -> str | None:
+    """Return a landscape Unsplash photo URL for `query`, or None.
+
+    Uses the /photos/random endpoint (free tier, 50 req/hr per
+    access-key). Returns the `regular` size (~1080px wide) which is
+    appropriate for in-app display without being wasteful.
+
+    Fails soft: returns None when UNSPLASH_ACCESS_KEY is unset, quota
+    is hit, or the network call errors — the caller simply omits the
+    image rather than crashing.
+    """
+    key = Config.UNSPLASH_ACCESS_KEY
+    if not key:
+        return None
+    query = (query or "").strip()
+    if not query:
+        return None
+    try:
+        params = urllib.parse.urlencode({
+            "query": query,
+            "orientation": "landscape",
+            "content_filter": "high",
+            "client_id": key,
+        })
+        url = f"https://api.unsplash.com/photos/random?{params}"
+        req = urllib.request.Request(url, headers={"Accept-Version": "v1"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode())
+        photo_url = (data.get("urls") or {}).get("regular")
+        return photo_url or None
+    except Exception as exc:
+        log.warning("unsplash_photo_url failed for %r: %s", query, exc)
+        return None
+
+
+# --- YouTube ----------------------------------------------------------
+
+def youtube_search_url(query: str) -> str | None:
+    """Return a YouTube embed URL (`https://www.youtube.com/embed/{id}`)
+    for the first short, embeddable video matching `query`, or None.
+
+    Uses YouTube Data API v3. Prefers short videos (< 4 minutes) and
+    restricts to embeddable results. Falls back to medium duration when
+    no short video is found.
+
+    Fails soft: returns None when YOUTUBE_API_KEY is unset, quota is
+    hit, or no suitable video is found.
+    """
+    key = Config.YOUTUBE_API_KEY
+    if not key:
+        return None
+    query = (query or "").strip()
+    if not query:
+        return None
+
+    def _search(duration: str) -> str | None:
+        params = urllib.parse.urlencode({
+            "part": "id",
+            "q": query,
+            "type": "video",
+            "videoEmbeddable": "true",
+            "safeSearch": "strict",
+            "videoDuration": duration,
+            "maxResults": 5,
+            "key": key,
+        })
+        url = f"https://www.googleapis.com/youtube/v3/search?{params}"
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=6) as resp:
+                data = _json.loads(resp.read().decode())
+            items = data.get("items") or []
+            for item in items:
+                vid_id = (item.get("id") or {}).get("videoId")
+                if vid_id:
+                    return (
+                        f"https://www.youtube.com/embed/{vid_id}"
+                        "?autoplay=0&rel=0&modestbranding=1"
+                    )
+        except Exception as exc:
+            log.warning("youtube_search_url(%r, %s) failed: %s", query, duration, exc)
+        return None
+
+    return _search("short") or _search("medium")
 
 
 # --- public API ---------------------------------------------------------

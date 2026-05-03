@@ -15,7 +15,11 @@ owns the bank reads/writes, ownership checks, and the per-user bookkeeping.
 """
 from __future__ import annotations
 
+import logging
+import re
 from typing import Any, Iterator
+
+log = logging.getLogger(__name__)
 
 from config import Config
 from app.agents import evaluator, exercise_bank, exercise_writer, tracker
@@ -29,6 +33,16 @@ from .types import ExerciseEvalPayload, ExercisesPayload
 # Tiers allowed to receive `listen_choice` exercises. TTS is real
 # spend per character — gating to Pro+ keeps free users free-and-cheap.
 _LISTEN_TIERS = {"pro", "power"}
+
+# video_choice is gated on YOUTUBE_API_KEY being configured, not tier.
+# (YouTube Data API v3 has a generous free quota — no tier split needed.)
+def _youtube_configured() -> bool:
+    from config import Config
+    return bool(Config.YOUTUBE_API_KEY)
+
+def _unsplash_configured() -> bool:
+    from config import Config
+    return bool(Config.UNSPLASH_ACCESS_KEY)
 
 
 class _ExercisesMixin:
@@ -158,6 +172,20 @@ class _ExercisesMixin:
             )
 
         # 2. Top up with the LLM if the bank is short.
+        # When video is enabled and we're doing week-level generation
+        # (no focused_module), reserve 1 slot for the LLM so the Writer
+        # always has a chance to emit a video_choice exercise. Bank rows
+        # are cached snapshots that predate the video_choice type and
+        # will never contain one, so we cap bank usage at count-1.
+        if (
+            _youtube_configured()
+            and focused_module is None
+            and not focus_weak_areas
+            and cached
+            and len(cached) >= count
+        ):
+            cached = cached[:count - 1]
+
         delivered: list[tuple[dict[str, Any], str | None]] = [
             (b.get("content_json") or {}, b.get("id")) for b in cached
         ]
@@ -225,6 +253,8 @@ class _ExercisesMixin:
                 # writer up-front so it doesn't waste output tokens
                 # emitting items that would just get dropped post-gen.
                 "listening_enabled": tier in _LISTEN_TIERS,
+                # video_choice items need the YouTube API key.
+                "video_enabled": _youtube_configured(),
                 "count": int(missing),
             }
 
@@ -295,6 +325,8 @@ class _ExercisesMixin:
         # OPENAI_API_KEY in dev), drop that row too — silent listening
         # is worse than missing.
         delivered = self._materialise_audio(delivered, tier=tier)
+        delivered = self._materialise_video(delivered)
+        delivered = self._materialise_images(delivered, domain=domain)
 
         if not delivered:
             return {
@@ -690,6 +722,126 @@ class _ExercisesMixin:
             # delivery for that bank row will re-fill via the cache hit
             # path above (URL is content-deterministic, no extra cost).
             content["audio_url"] = url
+            out.append((content, bank_id))
+        return out
+
+    def _materialise_video(
+        self,
+        delivered: list[tuple[dict[str, Any], str | None]],
+    ) -> list[tuple[dict[str, Any], str | None]]:
+        """Resolve YouTube embed URLs for `video_choice` rows.
+
+        If YOUTUBE_API_KEY is not configured, drops all video_choice rows
+        (they'd render as empty / broken without a URL).  On success the
+        orchestrator stores `video_url` in content_json so the iOS
+        VideoChoice component has a stable embed URL.
+
+        Rows that fail the YouTube search are dropped — an exercise with
+        no video is worse than one fewer exercise.
+        """
+        if not _youtube_configured():
+            return [(c, b) for c, b in delivered if c.get("type") != "video_choice"]
+
+        out: list[tuple[dict[str, Any], str | None]] = []
+        for content, bank_id in delivered:
+            if (content.get("type") or "") != "video_choice":
+                out.append((content, bank_id))
+                continue
+
+            # Already resolved (bank hit with a previously-stored URL).
+            if content.get("video_url"):
+                out.append((content, bank_id))
+                continue
+
+            query = (content.get("video_query") or "").strip()
+            if not query:
+                continue  # Writer emitted video_choice with no query — drop.
+
+            url = media.youtube_search_url(query)
+            if not url:
+                continue  # Search failed or returned no results — drop.
+
+            content["video_url"] = url
+            out.append((content, bank_id))
+        return out
+
+    def _materialise_images(
+        self,
+        delivered: list[tuple[dict[str, Any], str | None]],
+        *,
+        domain: str = "",
+    ) -> list[tuple[dict[str, Any], str | None]]:
+        """Resolve Unsplash photo URLs for every exercise that could
+        benefit from one.
+
+        Priority order for the query:
+          1. `image_query` — explicit query from the Writer (most precise)
+          2. exercise title + domain — derived fallback so bank-cached
+             exercises (generated before the image_query field existed)
+             still get photos without needing regeneration.
+
+        Skip types where images rarely add value:
+          - `video_choice`: the video is already the visual centrepiece.
+          - `flashcard`: minimal card, image would clutter.
+
+        A missing image is never fatal — the exercise is kept regardless;
+        we simply omit `image_url` when Unsplash is unconfigured or fails.
+        """
+        if not _unsplash_configured():
+            log.info("_materialise_images: Unsplash not configured, skipping")
+            return delivered
+
+        log.info(
+            "_materialise_images: processing %d exercises, domain=%r",
+            len(delivered), domain,
+        )
+
+        _SKIP_IMAGE_TYPES = {"video_choice", "flashcard"}
+
+        out: list[tuple[dict[str, Any], str | None]] = []
+        for content, bank_id in delivered:
+            ex_type = content.get("type") or ""
+            if ex_type not in _SKIP_IMAGE_TYPES and not content.get("image_url"):
+                # Priority 1: Writer-provided image_query (most precise)
+                query = (content.get("image_query") or "").strip()
+
+                # Priority 2: title (+ domain when title is short)
+                if not query:
+                    title = (content.get("title") or "").strip()
+                    if title:
+                        query = (
+                            f"{title} {domain}".strip()
+                            if domain and len(title.split()) <= 3
+                            else title
+                        )
+
+                # Priority 3: for vocabulary MCQ the word being tested is
+                # often quoted in the prompt — extract it as the image subject.
+                if not query and ex_type == "multiple_choice":
+                    prompt_text = (content.get("prompt") or "").strip()
+                    # Match a word/phrase in straight quotes: 'apple' or "beach"
+                    m = re.search(
+                        r"[\x27\x22]([^\x27\x22]{2,30})[\x27\x22]",
+                        prompt_text,
+                    )
+                    if m:
+                        extracted = m.group(1).strip()
+                        if extracted and len(extracted.split()) <= 4:
+                            query = extracted
+
+                log.info(
+                    "  [%s] title=%r  query=%r  has_image_query=%r",
+                    ex_type,
+                    content.get("title"),
+                    query,
+                    bool(content.get("image_query")),
+                )
+
+                if query:
+                    url = media.unsplash_photo_url(query)
+                    log.info("    unsplash result: %s", url[:60] if url else "None")
+                    if url:
+                        content["image_url"] = url
             out.append((content, bank_id))
         return out
 
