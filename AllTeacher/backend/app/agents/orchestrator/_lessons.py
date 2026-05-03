@@ -24,10 +24,11 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents import explainer
+from app.agents.tracker import mastered_concepts as _mastered_concepts
 from app.services import media
 from config import Config
 
-from ._base import now_iso
+from ._base import lang_name, now_iso
 from .errors import Conflict, NotFound, OrchestratorError
 from .types import LessonPayload
 
@@ -144,9 +145,11 @@ class _LessonsMixin:
         # Cache miss — run the Explainer.
         summary = (row.get("assessment_json") or {}).get("summary") or {}
         concept = modules[module_index]
+        _native_lang_code = row.get("native_language") or "en"
         payload = {
             "goal": row.get("goal") or row.get("topic") or "",
-            "native_language": row.get("native_language") or "en",
+            "native_language": _native_lang_code,
+            "native_language_name": lang_name(_native_lang_code),
             "target_language": (
                 row.get("target_language")
                 or summary.get("target_language")
@@ -179,6 +182,22 @@ class _LessonsMixin:
                 if hasattr(self, "_recent_avg_score") else None
             ),
         }
+
+        # Derive mastered concepts from exercise feedback so the Explainer
+        # can open the lesson with a brief revision of what the user has
+        # already confirmed they know (strength tags seen ≥ 2 times).
+        try:
+            _ex_rows = (
+                self.db.table("exercises")
+                .select("feedback_json")
+                .eq("curriculum_id", curriculum_id)
+                .eq("status", "evaluated")
+                .not_.is_("feedback_json", "null")
+                .execute()
+            ).data or []
+            payload["mastered_concepts"] = _mastered_concepts(_ex_rows)
+        except Exception:
+            payload["mastered_concepts"] = []
 
         try:
             content = explainer.write_lesson(payload)

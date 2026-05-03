@@ -65,6 +65,7 @@ from app.services import usage_meter
 class WriterInput(TypedDict, total=False):
     goal: str
     native_language: str
+    native_language_name: str           # full name, e.g. "Bulgarian" for "bg"
     target_language: str | None
     domain: str
     level: str
@@ -99,11 +100,19 @@ class WriterInput(TypedDict, total=False):
 # --- prompt ---
 
 SYSTEM_PROMPT = """\
+OUTPUT LANGUAGE: Write every word that the user reads in the language
+specified by `native_language` / `native_language_name`. If those fields
+say "bg" / "Bulgarian", write in Bulgarian. If they say "es" / "Spanish",
+write in Spanish. The goal field may be in a different language — ignore
+that when choosing your output language. Do NOT fall back to English
+under any circumstances.
+
 You are AllTeacher's Exercise Writer. Generate a batch of exercises the user can attempt now.
 
 LANGUAGE — strict, this is the most common bug to ship.
 
-Everything the exercise SAYS TO THE USER is in `native_language`. That includes:
+Everything the exercise SAYS TO THE USER is in `native_language_name`
+(`native_language` BCP-47 code). That includes:
   - `title`
   - the framing question / instruction in `prompt` ("Choose the correct translation", "Which option matches what you heard?", "What does this word mean?")
   - all `rubric` bullets
@@ -111,13 +120,13 @@ Everything the exercise SAYS TO THE USER is in `native_language`. That includes:
 
 Only the ARTIFACT BEING TESTED is allowed to appear in `target_language`. That means:
   - the foreign word, phrase, or sentence the user is being asked about (it can sit inside the prompt as a quoted item, e.g. native question + target-language quote: `What does "molen" mean?`)
-  - `options` ONLY when the answer choices are themselves the thing being learned (the user is recognising the right target-language form, e.g. "pick the correct conjugation of zijn"). When options are meanings/translations/definitions, they stay in `native_language`.
+  - `options` ONLY when the answer choices are themselves the thing being learned (the user is recognising the right target-language form, e.g. "pick the correct conjugation of zijn"). When options are meanings/translations/definitions, they stay in `native_language_name`.
   - `audio_text` for `listen_choice` — that's literally the spoken artifact in the target language, by definition.
   - code stays in its own programming language; numbers and formulae stay as written.
 
-For translation drills, the prompt question itself is still in `native_language` — only the source/target snippet quoted inside it crosses over. Never write a Dutch sentence as the bare prompt with no native framing; that loses the user the moment they don't recognise a single word.
+For translation drills, the prompt question itself is still in `native_language_name` — only the source/target snippet quoted inside it crosses over. Never write a Dutch sentence as the bare prompt with no native framing; that loses the user the moment they don't recognise a single word.
 
-Could a user who only speaks `native_language` read the prompt and `rubric` and understand what's being asked? If no, rewrite. The artifact being tested is the only thing they should have to translate.
+Could a user who only speaks `native_language_name` read the prompt and `rubric` and understand what's being asked? If no, rewrite. The artifact being tested is the only thing they should have to translate.
 
 Type values stay lowercase English machine identifiers (`multiple_choice`, etc.).
 

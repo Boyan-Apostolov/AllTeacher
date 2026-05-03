@@ -314,10 +314,16 @@ export default function Home() {
           </View>
         </View>
 
-        {/* ── Admin + Progress CTAs ── */}
+        {/* ── Nav CTAs ── */}
         <View style={styles.heroCtaRow}>
           <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/progress")}>
             <Text style={styles.heroCtaGhostText}>📈 Progress</Text>
+          </Pressable>
+          <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/vocabulary")}>
+            <Text style={styles.heroCtaGhostText}>📖 Vocab</Text>
+          </Pressable>
+          <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/subscription")}>
+            <Text style={styles.heroCtaGhostText}>✦ Plans</Text>
           </Pressable>
           {isAdmin ? (
             <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/admin")}>

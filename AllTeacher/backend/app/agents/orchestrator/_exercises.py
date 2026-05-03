@@ -25,7 +25,7 @@ from config import Config
 from app.agents import evaluator, exercise_bank, exercise_writer, tracker
 from app.services import media, usage_meter
 
-from ._base import now_iso
+from ._base import lang_name, now_iso
 from .errors import Conflict, NotFound, OrchestratorError
 from .types import ExerciseEvalPayload, ExercisesPayload
 
@@ -230,9 +230,11 @@ class _ExercisesMixin:
                 writer_modules = week_plan.get("modules") or []
                 writer_focus = week_plan.get("exercise_focus") or []
 
+            _native_lang_code = row.get("native_language") or "en"
             payload = {
                 "goal": row.get("goal") or row.get("topic") or "",
-                "native_language": row.get("native_language") or "en",
+                "native_language": _native_lang_code,
+                "native_language_name": lang_name(_native_lang_code),
                 "target_language": target_language,
                 "domain": domain,
                 "level": level,
@@ -538,8 +540,10 @@ class _ExercisesMixin:
             "seen": True,
         }).eq("id", exercise_id).execute()
 
+        _eval_lang_code = curriculum.get("native_language") or "en"
         payload = {
-            "native_language": curriculum.get("native_language") or "en",
+            "native_language": _eval_lang_code,
+            "native_language_name": lang_name(_eval_lang_code),
             "target_language": curriculum.get("target_language")
                 or summary.get("target_language"),
             "domain": curriculum.get("domain") or summary.get("domain") or "",

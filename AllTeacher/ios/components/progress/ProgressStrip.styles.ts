@@ -54,6 +54,35 @@ export const progressStripStyles = StyleSheet.create({
     marginVertical: 4,
   },
   lastActive: { fontSize: 12, color: colors.ink4 },
+  masteredSection: {
+    gap: 6,
+    paddingTop: 2,
+  },
+  masteredLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    color: colors.ink3,
+  },
+  masteredRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  masteredPill: {
+    backgroundColor: "#E6F9ED",
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: "#22A858",
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+  },
+  masteredPillText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#1A6B3A",
+  },
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",

@@ -17,6 +17,47 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Expanded language name lookup. Used to give agents the full name alongside
+# the BCP-47 code so the model never has to guess "bg" = Bulgarian.
+_LANG_NAMES: dict[str, str] = {
+    "af": "Afrikaans", "sq": "Albanian", "am": "Amharic", "ar": "Arabic",
+    "hy": "Armenian", "az": "Azerbaijani", "eu": "Basque", "be": "Belarusian",
+    "bn": "Bengali", "bs": "Bosnian", "bg": "Bulgarian", "ca": "Catalan",
+    "zh": "Chinese", "hr": "Croatian", "cs": "Czech", "da": "Danish",
+    "nl": "Dutch", "en": "English", "et": "Estonian", "fi": "Finnish",
+    "fr": "French", "gl": "Galician", "ka": "Georgian", "de": "German",
+    "el": "Greek", "gu": "Gujarati", "ht": "Haitian Creole", "ha": "Hausa",
+    "he": "Hebrew", "hi": "Hindi", "hu": "Hungarian", "is": "Icelandic",
+    "id": "Indonesian", "ga": "Irish", "it": "Italian", "ja": "Japanese",
+    "kn": "Kannada", "kk": "Kazakh", "km": "Khmer", "ko": "Korean",
+    "ku": "Kurdish", "ky": "Kyrgyz", "lo": "Lao", "lv": "Latvian",
+    "lt": "Lithuanian", "lb": "Luxembourgish", "mk": "Macedonian",
+    "ms": "Malay", "ml": "Malayalam", "mt": "Maltese", "mi": "Maori",
+    "mr": "Marathi", "mn": "Mongolian", "ne": "Nepali", "nb": "Norwegian",
+    "no": "Norwegian", "ps": "Pashto", "fa": "Persian", "pl": "Polish",
+    "pt": "Portuguese", "pa": "Punjabi", "ro": "Romanian", "ru": "Russian",
+    "sm": "Samoan", "sr": "Serbian", "si": "Sinhala", "sk": "Slovak",
+    "sl": "Slovenian", "so": "Somali", "es": "Spanish", "su": "Sundanese",
+    "sw": "Swahili", "sv": "Swedish", "tl": "Filipino", "tg": "Tajik",
+    "ta": "Tamil", "te": "Telugu", "th": "Thai", "tr": "Turkish",
+    "tk": "Turkmen", "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek",
+    "vi": "Vietnamese", "cy": "Welsh", "xh": "Xhosa", "yi": "Yiddish",
+    "yo": "Yoruba", "zu": "Zulu",
+}
+
+
+def lang_name(code: str) -> str:
+    """Return the full English name for a BCP-47 language code.
+
+    Falls back to the code itself if unknown, so unknown codes don't crash
+    anything — the model will still see the BCP-47 code as a hint.
+    """
+    if not code:
+        return "English"
+    base = code.split("-")[0].lower()
+    return _LANG_NAMES.get(base, code)
+
+
 class _OrchestratorBase:
     """Base for the Orchestrator mixin stack — owns `db` + the row loaders."""
 

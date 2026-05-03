@@ -329,6 +329,7 @@ export type CurriculumProgressDetail = {
   weeks: WeekProgress[];
   top_weak_areas: TagStat[];
   top_strengths: TagStat[];
+  mastered_concepts: string[];
   streak: StreakSummary;
   activity: ActivityDay[];
 };
