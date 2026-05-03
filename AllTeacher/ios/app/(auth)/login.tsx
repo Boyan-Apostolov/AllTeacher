@@ -1,14 +1,16 @@
 /**
- * Login screen — collects email + password and calls auth.signIn. Slim:
- * the input row, error box, and CTA are shared primitives.
+ * Login screen — collects email + password and calls auth.signIn.
+ * Also supports "Sign in with Apple" via expo-apple-authentication.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   Text,
   View,
+  StyleSheet,
 } from "react-native";
 import { Link } from "expo-router";
 
@@ -19,17 +21,25 @@ import {
   PrimaryCta,
   ScreenContainer,
 } from "@/components/ui";
-import { colors, type } from "@/lib/theme";
+import { colors, radii, spacing, type } from "@/lib/theme";
 
 import { authStyles as styles } from "./auth.styles";
 
 export default function Login() {
-  const { signIn } = useAuth();
+  const { signIn, signInWithApple } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [focused, setFocused] = useState<"email" | "password" | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== "ios") return;
+    import("expo-apple-authentication").then((mod) => {
+      mod.isAvailableAsync().then(setAppleAvailable).catch(() => {});
+    });
+  }, []);
 
   const onSubmit = async () => {
     setError(null);
@@ -38,6 +48,24 @@ export default function Login() {
       await signIn(email.trim(), password);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onApple = async () => {
+    setError(null);
+    setSubmitting(true);
+    try {
+      await signInWithApple();
+      // On success the auth state change fires and the router redirects —
+      // no need to set any state here.
+    } catch (e: any) {
+      // ERR_CANCELED is thrown when the user dismisses the sheet — not an error.
+      if (e?.code !== "ERR_CANCELED") {
+        const msg = e?.message || e?.toString() || "Apple Sign In failed";
+        setError(msg);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -59,6 +87,11 @@ export default function Login() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
+        <ScrollView
+          contentContainerStyle={loginStyles.scroll}
+          keyboardShouldPersistTaps="handled"
+          bounces={false}
+        >
         <View style={styles.hero}>
           <Text style={styles.eyebrow}>AllTeacher</Text>
           <Text style={styles.heroTitle}>Welcome{"\n"}back ✨</Text>
@@ -112,6 +145,10 @@ export default function Login() {
             />
           </View>
 
+          {appleAvailable ? (
+            <AppleDividerAndButton onPress={onApple} disabled={submitting} />
+          ) : null}
+
           <Link href="/(auth)/signup" asChild>
             <Pressable style={styles.footerLink}>
               <Text style={styles.footer}>
@@ -121,7 +158,61 @@ export default function Login() {
             </Pressable>
           </Link>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </ScreenContainer>
   );
 }
+
+/** Divider + Apple button — rendered only when Apple Sign In is available. */
+function AppleDividerAndButton({
+  onPress,
+  disabled,
+}: {
+  onPress: () => void;
+  disabled: boolean;
+}) {
+  const [AppleAuthentication, setMod] = useState<any>(null);
+
+  useEffect(() => {
+    import("expo-apple-authentication").then(setMod).catch(() => {});
+  }, []);
+
+  if (!AppleAuthentication) return null;
+
+  return (
+    <View style={appleStyles.wrap}>
+      {/* — or — */}
+      <View style={appleStyles.dividerRow}>
+        <View style={appleStyles.line} />
+        <Text style={appleStyles.orText}>or</Text>
+        <View style={appleStyles.line} />
+      </View>
+
+      <AppleAuthentication.AppleAuthenticationButton
+        buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+        buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+        cornerRadius={radii.lg}
+        style={appleStyles.button}
+        onPress={onPress}
+      />
+    </View>
+  );
+}
+
+const loginStyles = StyleSheet.create({
+  scroll: { flexGrow: 1, justifyContent: "flex-end" },
+});
+
+const appleStyles = StyleSheet.create({
+  wrap: { marginTop: spacing.lg },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  line: { flex: 1, height: 1, backgroundColor: colors.border },
+  orText: { fontSize: 13, color: colors.textMuted },
+  button: { height: 50, width: "100%" },
+});

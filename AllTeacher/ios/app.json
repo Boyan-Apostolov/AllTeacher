@@ -10,6 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.allteacher.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -17,7 +18,7 @@
     "android": {
       "package": "com.allteacher.app"
     },
-    "plugins": ["expo-router"],
+    "plugins": ["expo-router", "expo-apple-authentication"],
     "experiments": {
       "typedRoutes": true
     },
