@@ -1,13 +1,10 @@
 /**
- * The big gradient pill button that appears at the bottom of every form
- * and at the end of the upcoming-session card. One component, one set of
- * styles, every screen gets the same look and motion.
+ * PrimaryCta — the big neo-brutalist pill CTA button.
+ * Chunky ink border, offset hard shadow, no gradient.
+ * Accepts bg/color overrides for per-exercise-type theming.
  */
-import { ActivityIndicator, Pressable, Text, ViewStyle } from "react-native";
-
-import { Gradient } from "@/components/Gradient";
+import { ActivityIndicator, Pressable, Text, View, ViewStyle } from "react-native";
 import { colors } from "@/lib/theme";
-
 import { primaryCtaStyles as styles } from "./PrimaryCta.styles";
 
 export function PrimaryCta({
@@ -15,16 +12,19 @@ export function PrimaryCta({
   onPress,
   loading,
   disabled,
-  from = colors.brand,
-  to = colors.brandDeep,
-  via,
-  angle = 135,
+  bg = colors.brand,
+  color = "#fff",
   style,
 }: {
   label: string;
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
+  /** Background color of the button */
+  bg?: string;
+  /** Text/icon color */
+  color?: string;
+  // Legacy gradient props — accepted but ignored
   from?: string;
   to?: string;
   via?: string;
@@ -38,24 +38,19 @@ export function PrimaryCta({
       disabled={isDisabled}
       style={({ pressed }) => [
         styles.cta,
+        { backgroundColor: bg },
         isDisabled && styles.ctaDisabled,
         pressed && !isDisabled && styles.ctaPressed,
         style,
       ]}
     >
-      <Gradient
-        from={from}
-        via={via}
-        to={to}
-        angle={angle}
-        style={styles.ctaGradient}
-      >
+      <View style={[styles.ctaInner, { backgroundColor: bg }]}>
         {loading ? (
-          <ActivityIndicator color={colors.textOnDark} />
+          <ActivityIndicator color={color} />
         ) : (
-          <Text style={styles.ctaText}>{label}</Text>
+          <Text style={[styles.ctaText, { color }]}>{label}</Text>
         )}
-      </Gradient>
+      </View>
     </Pressable>
   );
 }

@@ -1,13 +1,12 @@
 /**
- * Assessor MCQ — progress dots, question text, four answer options, and
- * a "Thinking…" indicator when the answer is being submitted.
+ * Assessor MCQ — neo-brutalist redesign.
+ * Progress bar, mascot speech bubble, A/B/C/D option cards.
  */
 import { Pressable, Text, View } from "react-native";
-
 import type { AssessorQuestion } from "@/lib/api";
-import { spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 import { LoadingBlock } from "@/components/ui";
-
+import { Mascot } from "@/components/ui/Mascot";
 import { questionViewStyles as styles } from "./QuestionView.styles";
 
 export function QuestionView({
@@ -21,24 +20,25 @@ export function QuestionView({
   submitting: boolean;
   onPick: (choice: string) => void;
 }) {
+  const progress = Math.min(number / 10, 1);
+
   return (
     <View style={{ gap: spacing.lg }}>
-      <View style={styles.header}>
-        <View style={styles.progressRow}>
-          {Array.from({ length: 6 }).map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.progressDot,
-                i < Math.min(number, 6) && styles.progressDotActive,
-              ]}
-            />
-          ))}
-        </View>
-        <Text style={styles.eyebrow}>Question {number}</Text>
-        <Text style={styles.title}>{question.question}</Text>
+      {/* Progress bar */}
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
       </View>
 
+      {/* Mascot + speech bubble */}
+      <View style={styles.bubbleRow}>
+        <Mascot size={48} mood="thinking" color={colors.flash} />
+        <View style={styles.bubble}>
+          <Text style={styles.bubbleLabel}>Quick check</Text>
+          <Text style={styles.title}>{question.question}</Text>
+        </View>
+      </View>
+
+      {/* Options */}
       <View style={{ gap: spacing.sm }}>
         {question.options.map((opt, idx) => (
           <Pressable

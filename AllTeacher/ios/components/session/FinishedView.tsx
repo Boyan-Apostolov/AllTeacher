@@ -34,9 +34,9 @@ function cheerFor(pct: number): string {
 }
 
 function barColor(score: number): string {
-  if (score >= 0.9) return colors.success;
-  if (score >= 0.6) return colors.warning;
-  return colors.danger;
+  if (score >= 0.9) return colors.ok;
+  if (score >= 0.6) return colors.short;
+  return colors.warn;
 }
 
 /**
@@ -164,7 +164,7 @@ export function FinishedView({
         <Text style={styles.eyebrow}>Session complete</Text>
         <Text style={styles.title}>{cheer}</Text>
         <Text style={styles.sub}>
-          You finished {evaluated.length} of {exercises.length} exercises.
+          {evaluated.length} of {exercises.length} exercises done.
         </Text>
       </View>
 
@@ -204,7 +204,7 @@ export function FinishedView({
                 <View
                   style={[
                     styles.legendSwatch,
-                    { backgroundColor: colors.success },
+                    { backgroundColor: colors.ok },
                   ]}
                 />
                 <Text style={styles.legendText}>90%+</Text>
@@ -213,7 +213,7 @@ export function FinishedView({
                 <View
                   style={[
                     styles.legendSwatch,
-                    { backgroundColor: colors.warning },
+                    { backgroundColor: colors.short },
                   ]}
                 />
                 <Text style={styles.legendText}>60–89%</Text>
@@ -222,7 +222,7 @@ export function FinishedView({
                 <View
                   style={[
                     styles.legendSwatch,
-                    { backgroundColor: colors.danger },
+                    { backgroundColor: colors.warn },
                   ]}
                 />
                 <Text style={styles.legendText}>&lt; 60%</Text>
@@ -243,7 +243,7 @@ export function FinishedView({
           {weak.map((w) => (
             <View key={w} style={styles.recapRow}>
               <View
-                style={[styles.recapDot, { backgroundColor: colors.danger }]}
+                style={[styles.recapDot, { backgroundColor: colors.warn }]}
               />
               <Text style={styles.recapText}>{w}</Text>
             </View>
@@ -257,7 +257,7 @@ export function FinishedView({
           {strengths.map((s) => (
             <View key={s} style={styles.recapRow}>
               <View
-                style={[styles.recapDot, { backgroundColor: colors.success }]}
+                style={[styles.recapDot, { backgroundColor: colors.ok }]}
               />
               <Text style={styles.recapText}>{s}</Text>
             </View>
@@ -277,8 +277,7 @@ export function FinishedView({
           <PrimaryCta
             label="Start bonus drill 🎯"
             onPress={onStartBonus}
-            from={colors.accent}
-            to={colors.brandDeep}
+            bg={colors.mc}
           />
         </View>
       ) : null}
@@ -286,8 +285,7 @@ export function FinishedView({
       <PrimaryCta
         label="Back to home →"
         onPress={onHome}
-        from={colors.brand}
-        to={colors.brandDeep}
+        bg={colors.brand}
       />
     </View>
   );

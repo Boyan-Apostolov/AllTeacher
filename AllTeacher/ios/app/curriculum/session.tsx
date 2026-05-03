@@ -45,7 +45,7 @@ import {
   ScreenContainer,
   Toolbar,
 } from "@/components/ui";
-import { colors, typeAccent } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 import { sessionScreenStyles as styles } from "./session.styles";
 
@@ -590,11 +590,6 @@ export default function SessionScreen() {
       ? 1
       : Math.max(moduleProgress, liveProgress);
 
-  const accent = active
-    ? typeAccent[active.content_json.type as keyof typeof typeAccent] ??
-      typeAccent.multiple_choice
-    : typeAccent.multiple_choice;
-
   const goHome = () => router.replace("/");
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace("/");
@@ -679,14 +674,7 @@ export default function SessionScreen() {
   };
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: accent.gradientFrom,
-        to: accent.gradientTo,
-        angle: 150,
-        height: 280,
-      }}
-    >
+    <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
       <Toolbar
         onBack={goBack}
@@ -694,8 +682,8 @@ export default function SessionScreen() {
         middle={
           <ProgressBar
             pct={shownProgress}
-            color={colors.textOnDark}
-            trackColor="rgba(255,255,255,0.32)"
+            color={colors.brand}
+            trackColor={colors.paperAlt}
             height={6}
           />
         }

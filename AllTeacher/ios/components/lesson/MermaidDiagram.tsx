@@ -99,40 +99,39 @@ function buildHtml(source: string): string {
         }
       } catch (e) { /* noop */ }
     }
-    function showError(msg) {
-      var el = document.getElementById('err');
-      el.textContent = msg;
-      el.style.display = 'block';
-      postHeight();
+    function showError() {
+      // Hide the diagram container and post a minimal height so the
+      // lesson card collapses cleanly — no red bomb or parse errors shown.
+      document.getElementById('diagram').style.display = 'none';
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mermaid:error' }));
+      }
     }
     try {
       mermaid.initialize({
         startOnLoad: false,
-        securityLevel: 'strict',
+        securityLevel: 'loose',
         theme: 'default',
+        suppressErrorRendering: true,
         flowchart: { useMaxWidth: true },
         themeVariables: {
-          // Match the app's palette so the diagram doesn't visually
-          // pop out of the lesson card.
-          primaryColor: '#efe9ff',
-          primaryTextColor: '#1d1640',
-          primaryBorderColor: '#7c5cff',
-          lineColor: '#5f3dff',
+          primaryColor: '#FBF4E6',
+          primaryTextColor: '#1A1410',
+          primaryBorderColor: '#1A1410',
+          lineColor: '#FF6B3D',
           fontSize: '14px'
         }
       });
       var src = ${'`' + escaped + '`'};
       mermaid.render('rendered', src).then(function (out) {
         document.getElementById('diagram').innerHTML = out.svg;
-        // Mermaid renders synchronously, but the SVG layout settles a
-        // tick later. Two posts cover the common cases.
         postHeight();
         setTimeout(postHeight, 60);
       }).catch(function (e) {
-        showError('Mermaid: ' + (e && e.message ? e.message : 'render failed'));
+        showError();
       });
     } catch (e) {
-      showError('Mermaid: ' + (e && e.message ? e.message : 'init failed'));
+      showError();
     }
   })();
 </script>
@@ -159,6 +158,7 @@ export function MermaidDiagram({ source }: { source: string }) {
     );
   }
 
+  if (height === 0) return null;
   return (
     <View style={[styles.container, { height }]}>
       <_WebView
@@ -182,9 +182,11 @@ export function MermaidDiagram({ source }: { source: string }) {
             if (data?.type === "mermaid:height" && typeof data.height === "number") {
               const next = Math.max(80, Math.min(600, Math.ceil(data.height)));
               setHeight(next);
+            } else if (data?.type === "mermaid:error") {
+              setHeight(0);   // collapse the View — diagram unavailable
             }
           } catch {
-            /* ignore — non-JSON messages from random WebView noise */
+            /* ignore */
           }
         }}
       />

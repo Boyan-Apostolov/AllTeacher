@@ -5,6 +5,7 @@
     "scheme": "allteacher",
     "version": "0.1.0",
     "orientation": "portrait",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -16,7 +17,11 @@
       }
     },
     "android": {
-      "package": "com.allteacher.app"
+      "package": "com.allteacher.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#FF6B3D"
+      }
     },
     "plugins": ["expo-router", "expo-apple-authentication"],
     "experiments": {

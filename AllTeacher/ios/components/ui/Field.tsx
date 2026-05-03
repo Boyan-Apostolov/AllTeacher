@@ -1,26 +1,24 @@
 /**
- * Labelled text input with a focus ring. Used by login + signup so they
- * stop redefining the same Field component locally.
+ * Field — neo-brutalist text input. White card with chunky ink border
+ * + offset shadow. Label floats inside the card above the input.
  */
 import { TextInput, Text, View } from "react-native";
-
 import { colors } from "@/lib/theme";
-
 import { fieldStyles as styles } from "./Field.styles";
 
 type Props = React.ComponentProps<typeof TextInput> & {
   label: string;
-  focused: boolean;
+  focused?: boolean;
 };
 
 export function Field({ label, focused, style, ...rest }: Props) {
   return (
-    <View>
+    <View style={[styles.wrapper, focused && styles.wrapperFocused]}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
         {...rest}
-        placeholderTextColor={colors.textFaint}
-        style={[styles.input, focused && styles.inputFocused, style]}
+        placeholderTextColor={colors.ink4}
+        style={[styles.input, style]}
       />
     </View>
   );

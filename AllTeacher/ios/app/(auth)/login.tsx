@@ -1,6 +1,6 @@
 /**
- * Login screen — collects email + password and calls auth.signIn.
- * Also supports "Sign in with Apple" via expo-apple-authentication.
+ * Login screen — neo-brutalist redesign.
+ * Mascot peeking, "Welcome back." heading, brutalist fields, MegaPill CTA.
  */
 import { useEffect, useState } from "react";
 import {
@@ -13,15 +13,13 @@ import {
   StyleSheet,
 } from "react-native";
 import { Link } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/lib/auth";
-import {
-  Field,
-  MessageBox,
-  PrimaryCta,
-  ScreenContainer,
-} from "@/components/ui";
-import { colors, radii, spacing, type } from "@/lib/theme";
+import { Field, MessageBox, PrimaryCta } from "@/components/ui";
+import { Mascot } from "@/components/ui/Mascot";
+import { Sticker } from "@/components/ui/Sticker";
+import { colors, radii, spacing } from "@/lib/theme";
 
 import { authStyles as styles } from "./auth.styles";
 
@@ -58,13 +56,9 @@ export default function Login() {
     setSubmitting(true);
     try {
       await signInWithApple();
-      // On success the auth state change fires and the router redirects —
-      // no need to set any state here.
     } catch (e: any) {
-      // ERR_CANCELED is thrown when the user dismisses the sheet — not an error.
       if (e?.code !== "ERR_CANCELED") {
-        const msg = e?.message || e?.toString() || "Apple Sign In failed";
-        setError(msg);
+        setError(e?.message || e?.toString() || "Apple Sign In failed");
       }
     } finally {
       setSubmitting(false);
@@ -74,97 +68,103 @@ export default function Login() {
   const canSubmit = !!email && !!password && !submitting;
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: colors.brand,
-        via: colors.accent,
-        to: "#ff9966",
-        angle: 150,
-        height: 360,
-      }}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={loginStyles.scroll}
+          contentContainerStyle={localStyles.scroll}
           keyboardShouldPersistTaps="handled"
           bounces={false}
+          showsVerticalScrollIndicator={false}
         >
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>AllTeacher</Text>
-          <Text style={styles.heroTitle}>Welcome{"\n"}back ✨</Text>
-          <Text style={styles.heroSub}>Pick up where you left off.</Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={type.h1}>Sign in</Text>
-          <Text style={styles.cardSub}>Use the email you signed up with.</Text>
-
-          <View style={styles.fields}>
-            <Field
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              focused={focused === "email"}
-              onFocus={() => setFocused("email")}
-              onBlur={() => setFocused(null)}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              textContentType="emailAddress"
-            />
-            <Field
-              label="Password"
-              placeholder="••••••••"
-              value={password}
-              onChangeText={setPassword}
-              focused={focused === "password"}
-              onFocus={() => setFocused("password")}
-              onBlur={() => setFocused(null)}
-              secureTextEntry
-              autoComplete="password"
-              textContentType="password"
-            />
-          </View>
-
-          {error ? (
-            <View style={styles.errorWrap}>
-              <MessageBox variant="error" message={error} />
+          <View style={styles.container}>
+            {/* Mascot + "hey 👋" sticker */}
+            <View style={[styles.mascotRow, { marginTop: 20 }]}>
+              <Mascot size={70} mood="happy" color={colors.brand} />
+              <View style={{ marginBottom: 14 }}>
+                <Sticker bg="#FFE066" color={colors.ink} rotate={-6} uppercase={false}>
+                  hey 👋
+                </Sticker>
+              </View>
             </View>
-          ) : null}
 
-          <View style={styles.ctaWrap}>
-            <PrimaryCta
-              label="Sign in →"
-              onPress={onSubmit}
-              loading={submitting}
-              disabled={!canSubmit}
-            />
-          </View>
-
-          {appleAvailable ? (
-            <AppleDividerAndButton onPress={onApple} disabled={submitting} />
-          ) : null}
-
-          <Link href="/(auth)/signup" asChild>
-            <Pressable style={styles.footerLink}>
-              <Text style={styles.footer}>
-                New here?{" "}
-                <Text style={styles.footerAccent}>Create an account</Text>
+            {/* Heading */}
+            <View style={{ marginTop: 20 }}>
+              <Text style={styles.heroTitle}>
+                Welcome{"\n"}
+                <Text style={styles.heroTitleAccent}>back.</Text>
               </Text>
-            </Pressable>
-          </Link>
-        </View>
+              <Text style={styles.heroSub}>
+                Pick up where you left off.
+              </Text>
+            </View>
+
+            {/* Fields */}
+            <View style={styles.fields}>
+              <Field
+                label="Email"
+                placeholder="maya@hey.com"
+                value={email}
+                onChangeText={setEmail}
+                focused={focused === "email"}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+              />
+              <Field
+                label="Password"
+                placeholder="••••••••"
+                value={password}
+                onChangeText={setPassword}
+                focused={focused === "password"}
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                secureTextEntry
+                autoComplete="password"
+                textContentType="password"
+              />
+            </View>
+
+            {error ? (
+              <View style={styles.errorWrap}>
+                <MessageBox variant="error" message={error} />
+              </View>
+            ) : null}
+
+            <View style={styles.ctaWrap}>
+              <PrimaryCta
+                label="Log in →"
+                onPress={onSubmit}
+                loading={submitting}
+                disabled={!canSubmit}
+                bg={colors.brand}
+              />
+            </View>
+
+            {appleAvailable ? (
+              <AppleDividerAndButton onPress={onApple} disabled={submitting} />
+            ) : null}
+
+            <Link href="/(auth)/signup" asChild>
+              <Pressable style={styles.footerLink}>
+                <Text style={styles.footer}>
+                  New here?{" "}
+                  <Text style={styles.footerAccent}>Make an account</Text>
+                </Text>
+              </Pressable>
+            </Link>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
-/** Divider + Apple button — rendered only when Apple Sign In is available. */
 function AppleDividerAndButton({
   onPress,
   disabled,
@@ -182,13 +182,11 @@ function AppleDividerAndButton({
 
   return (
     <View style={appleStyles.wrap}>
-      {/* — or — */}
       <View style={appleStyles.dividerRow}>
         <View style={appleStyles.line} />
         <Text style={appleStyles.orText}>or</Text>
         <View style={appleStyles.line} />
       </View>
-
       <AppleAuthentication.AppleAuthenticationButton
         buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
         buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
@@ -200,8 +198,8 @@ function AppleDividerAndButton({
   );
 }
 
-const loginStyles = StyleSheet.create({
-  scroll: { flexGrow: 1, justifyContent: "flex-end" },
+const localStyles = StyleSheet.create({
+  scroll: { flexGrow: 1 },
 });
 
 const appleStyles = StyleSheet.create({
@@ -212,7 +210,7 @@ const appleStyles = StyleSheet.create({
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
-  line: { flex: 1, height: 1, backgroundColor: colors.border },
-  orText: { fontSize: 13, color: colors.textMuted },
+  line: { flex: 1, height: 1.5, backgroundColor: colors.ink4 },
+  orText: { fontSize: 13, color: colors.ink3, fontWeight: "600" },
   button: { height: 50, width: "100%" },
 });

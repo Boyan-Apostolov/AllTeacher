@@ -1,10 +1,12 @@
 /**
- * Exercise header — type pill + "X of Y" count + exercise title.
+ * Exercise header — neo-brutalist redesign.
+ * Progress bar track + colored fill + "X/Y" count + Sticker type label.
  */
 import { Text, View } from "react-native";
 
-import { typeAccent } from "@/lib/theme";
 import type { ExerciseRow } from "@/lib/api";
+import { typeAccent } from "@/lib/theme";
+import { Sticker } from "@/components/ui/Sticker";
 
 import { exerciseHeaderStyles as styles } from "./ExerciseHeader.styles";
 
@@ -20,19 +22,26 @@ export function ExerciseHeader({
   const c = exercise.content_json;
   const accent =
     typeAccent[c.type as keyof typeof typeAccent] ?? typeAccent.multiple_choice;
+  const pct = total > 0 ? ((index + 1) / total) * 100 : 0;
 
   return (
     <View style={styles.block}>
-      <View style={styles.kindRow}>
-        <View style={styles.kindPill}>
-          <Text style={styles.kindEmoji}>{accent.emoji}</Text>
-          <Text style={styles.kindText}>{accent.label}</Text>
+      <View style={styles.topRow}>
+        <View style={styles.progressTrack}>
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${pct}%`, backgroundColor: accent.fg },
+            ]}
+          />
         </View>
-        <Text style={styles.kindCount}>
-          {Math.min(index + 1, total)} of {total}
+        <Text style={styles.countText}>
+          {Math.min(index + 1, total)}/{total}
         </Text>
       </View>
-      <Text style={styles.title}>{c.title}</Text>
+      <Sticker bg={accent.fg} color="#fff" rotate={-3} uppercase={false}>
+        {accent.emoji} {accent.label}
+      </Sticker>
     </View>
   );
 }

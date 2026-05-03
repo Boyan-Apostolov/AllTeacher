@@ -21,13 +21,11 @@ import {
   ScreenContainer,
   Toolbar,
 } from "@/components/ui";
-import { Gradient } from "@/components/Gradient";
 import {
   domainEmoji,
   formatRelative,
   formatScorePct,
 } from "@/lib/curriculum";
-import { colors, spacing } from "@/lib/theme";
 
 import { progressScreenStyles as styles } from "./progress.styles";
 
@@ -96,22 +94,14 @@ export default function ProgressDashboard() {
     router.canGoBack() ? router.back() : router.replace("/");
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: colors.brand,
-        via: colors.accent,
-        to: colors.brandDeep,
-        angle: 150,
-        height: 280,
-      }}
-    >
+    <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
       <Toolbar title="Progress" onBack={goBack} onHome={goHome} />
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <View style={{ gap: spacing.xs }}>
+        <View style={styles.heroBlock}>
           <Text style={styles.heroEyebrow}>Your dashboard</Text>
           <Text style={styles.heroTitle}>
             {summary && summary.streak.current_days > 0
@@ -205,36 +195,12 @@ export default function ProgressDashboard() {
             </View>
 
             {/* Tiny hint so the curriculum-level dashboard is discoverable. */}
-            <Gradient
-              from={colors.brandSoft}
-              to={colors.accentSoft}
-              angle={120}
-              style={{
-                borderRadius: 16,
-                padding: spacing.md,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 12,
-                  color: colors.brandDeep,
-                  fontWeight: "700",
-                  letterSpacing: 0.4,
-                  textTransform: "uppercase",
-                }}
-              >
-                Tip
-              </Text>
-              <Text
-                style={{
-                  fontSize: 13,
-                  color: colors.text,
-                  marginTop: 4,
-                }}
-              >
+            <View style={styles.tipCard}>
+              <Text style={styles.tipLabel}>Tip</Text>
+              <Text style={styles.tipText}>
                 Tap any curriculum to open its plan and per-week progress.
               </Text>
-            </Gradient>
+            </View>
 
           </>
         )}

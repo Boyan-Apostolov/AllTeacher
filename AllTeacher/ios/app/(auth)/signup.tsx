@@ -1,7 +1,6 @@
 /**
- * Signup screen — collects email + password (>= 6 chars) and calls
- * auth.signUp. Also supports "Continue with Apple" via expo-apple-authentication
- * (skips the email/password flow entirely — Apple provides the identity).
+ * Signup screen — neo-brutalist redesign.
+ * Step stickers, "Let's get you started." heading, brutalist fields.
  */
 import { useEffect, useState } from "react";
 import {
@@ -14,15 +13,12 @@ import {
   View,
 } from "react-native";
 import { Link } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "@/lib/auth";
-import {
-  Field,
-  MessageBox,
-  PrimaryCta,
-  ScreenContainer,
-} from "@/components/ui";
-import { colors, radii, spacing, type } from "@/lib/theme";
+import { Field, MessageBox, PrimaryCta } from "@/components/ui";
+import { Sticker } from "@/components/ui/Sticker";
+import { colors, radii, spacing } from "@/lib/theme";
 
 import { authStyles as styles } from "./auth.styles";
 
@@ -35,6 +31,7 @@ export default function Signup() {
   const [submitting, setSubmitting] = useState(false);
   const [focused, setFocused] = useState<"email" | "password" | null>(null);
   const [appleAvailable, setAppleAvailable] = useState(false);
+  const [weeklyEmails, setWeeklyEmails] = useState(true);
 
   useEffect(() => {
     if (Platform.OS !== "ios") return;
@@ -49,9 +46,7 @@ export default function Signup() {
     setSubmitting(true);
     try {
       await signUp(email.trim(), password);
-      setInfo(
-        "Account created. If email confirmation is enabled, check your inbox.",
-      );
+      setInfo("Account created! Check your inbox if email confirmation is enabled.");
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -67,8 +62,7 @@ export default function Signup() {
       await signInWithApple();
     } catch (e: any) {
       if (e?.code !== "ERR_CANCELED") {
-        const msg = e?.message || e?.toString() || "Apple Sign In failed";
-        setError(msg);
+        setError(e?.message || e?.toString() || "Apple Sign In failed");
       }
     } finally {
       setSubmitting(false);
@@ -78,121 +72,124 @@ export default function Signup() {
   const canSubmit = !!email && password.length >= 6 && !submitting;
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: colors.accent,
-        via: colors.brand,
-        to: "#5fb8ff",
-        angle: 200,
-        height: 360,
-      }}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.flex}
       >
         <ScrollView
-          contentContainerStyle={signupStyles.scroll}
+          contentContainerStyle={localStyles.scroll}
           keyboardShouldPersistTaps="handled"
           bounces={false}
+          showsVerticalScrollIndicator={false}
         >
-        <View style={styles.hero}>
-          <Text style={styles.eyebrow}>AllTeacher</Text>
-          <Text style={styles.heroTitle}>Learn{"\n"}anything 🌱</Text>
-          <Text style={styles.heroSub}>
-            Tell us a goal — we'll build the path.
-          </Text>
-        </View>
-
-        <View style={styles.card}>
-          <Text style={type.h1}>Create account</Text>
-          <Text style={styles.cardSub}>
-            No credit card. One curriculum on the free plan.
-          </Text>
-
-          {/* Apple button first — Apple guidelines require it to be prominent */}
-          {appleAvailable ? (
-            <AppleSignUpButton
-              onPress={onApple}
-              disabled={submitting}
-            />
-          ) : null}
-
-          {/* — or — divider before email/password */}
-          {appleAvailable ? (
-            <View style={appleStyles.dividerRow}>
-              <View style={appleStyles.line} />
-              <Text style={appleStyles.orText}>or sign up with email</Text>
-              <View style={appleStyles.line} />
+          <View style={styles.container}>
+            {/* Step stickers */}
+            <View style={[styles.stepsRow, { marginTop: 20 }]}>
+              <Sticker bg={colors.flash} color="#fff" rotate={-3}>step 1 of 3</Sticker>
+              <Sticker bg={colors.paperAlt} color={colors.ink3} rotate={2} style={{ opacity: 0.7 }}>2</Sticker>
+              <Sticker bg={colors.paperAlt} color={colors.ink3} rotate={-2} style={{ opacity: 0.7 }}>3</Sticker>
             </View>
-          ) : null}
 
-          <View style={styles.fields}>
-            <Field
-              label="Email"
-              placeholder="you@example.com"
-              value={email}
-              onChangeText={setEmail}
-              focused={focused === "email"}
-              onFocus={() => setFocused("email")}
-              onBlur={() => setFocused(null)}
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              textContentType="emailAddress"
-            />
-            <Field
-              label="Password"
-              placeholder="At least 6 characters"
-              value={password}
-              onChangeText={setPassword}
-              focused={focused === "password"}
-              onFocus={() => setFocused("password")}
-              onBlur={() => setFocused(null)}
-              secureTextEntry
-              autoComplete="new-password"
-              textContentType="newPassword"
-            />
-          </View>
-
-          {error ? (
-            <View style={styles.errorWrap}>
-              <MessageBox variant="error" message={error} />
-            </View>
-          ) : null}
-          {info ? (
-            <View style={styles.errorWrap}>
-              <MessageBox variant="success" message={info} />
-            </View>
-          ) : null}
-
-          <View style={styles.ctaWrap}>
-            <PrimaryCta
-              label="Create account →"
-              onPress={onSubmit}
-              loading={submitting}
-              disabled={!canSubmit}
-              from={colors.brand}
-              to={colors.accent}
-            />
-          </View>
-
-          <Link href="/(auth)/login" asChild>
-            <Pressable style={styles.footerLink}>
-              <Text style={styles.footer}>
-                Already have one?{" "}
-                <Text style={styles.footerAccent}>Sign in</Text>
+            {/* Heading */}
+            <View style={{ marginTop: 20 }}>
+              <Text style={styles.heroTitle}>
+                Let's get you{"\n"}
+                <Text style={styles.heroTitleAccent}>started.</Text>
               </Text>
+            </View>
+
+            {/* Apple button first (Apple guidelines) */}
+            {appleAvailable ? (
+              <AppleSignUpButton onPress={onApple} disabled={submitting} />
+            ) : null}
+
+            {appleAvailable ? (
+              <View style={appleStyles.dividerRow}>
+                <View style={appleStyles.line} />
+                <Text style={appleStyles.orText}>or sign up with email</Text>
+                <View style={appleStyles.line} />
+              </View>
+            ) : null}
+
+            {/* Fields */}
+            <View style={[styles.fields, !appleAvailable && { marginTop: 24 }]}>
+              <Field
+                label="Email"
+                placeholder="maya@hey.com"
+                value={email}
+                onChangeText={setEmail}
+                focused={focused === "email"}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+              />
+              <Field
+                label="Password"
+                placeholder="at least 8 chars"
+                value={password}
+                onChangeText={setPassword}
+                focused={focused === "password"}
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                secureTextEntry
+                autoComplete="new-password"
+                textContentType="newPassword"
+              />
+            </View>
+
+            {/* Weekly emails checkbox */}
+            <Pressable style={[styles.checkRow, { marginTop: 12 }]} onPress={() => setWeeklyEmails(!weeklyEmails)}>
+              <View style={[styles.checkBox, !weeklyEmails && { backgroundColor: colors.paperAlt }]}>
+                {weeklyEmails ? <Text style={{ color: "#fff", fontWeight: "900", fontSize: 14 }}>✓</Text> : null}
+              </View>
+              <Text style={styles.checkText}>Send me weekly progress emails</Text>
             </Pressable>
-          </Link>
-        </View>
+
+            {error ? (
+              <View style={styles.errorWrap}>
+                <MessageBox variant="error" message={error} />
+              </View>
+            ) : null}
+            {info ? (
+              <View style={styles.errorWrap}>
+                <MessageBox variant="success" message={info} />
+              </View>
+            ) : null}
+
+            <View style={styles.ctaWrap}>
+              <PrimaryCta
+                label="Continue →"
+                onPress={onSubmit}
+                loading={submitting}
+                disabled={!canSubmit}
+                bg={colors.brand}
+              />
+            </View>
+
+            <Text style={styles.termsText}>
+              By signing up you agree to the{" "}
+              <Text style={styles.termsLink}>terms</Text>.
+            </Text>
+
+            <Link href="/(auth)/login" asChild>
+              <Pressable style={[styles.footerLink, { marginTop: 12 }]}>
+                <Text style={styles.footer}>
+                  Already have one?{" "}
+                  <Text style={styles.footerAccent}>Sign in</Text>
+                </Text>
+              </Pressable>
+            </Link>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }
 
-/** Apple "Continue with Apple" button — lazy-loaded, only rendered when available. */
 function AppleSignUpButton({
   onPress,
   disabled,
@@ -221,8 +218,8 @@ function AppleSignUpButton({
   );
 }
 
-const signupStyles = StyleSheet.create({
-  scroll: { flexGrow: 1, justifyContent: "flex-end" },
+const localStyles = StyleSheet.create({
+  scroll: { flexGrow: 1 },
 });
 
 const appleStyles = StyleSheet.create({
@@ -232,9 +229,9 @@ const appleStyles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     marginTop: spacing.lg,
-    marginBottom: spacing.sm,
+    marginBottom: 4,
   },
-  line: { flex: 1, height: 1, backgroundColor: colors.border },
-  orText: { fontSize: 12, color: colors.textMuted, flexShrink: 0 },
+  line: { flex: 1, height: 1.5, backgroundColor: colors.ink4 },
+  orText: { fontSize: 12, color: colors.ink3, flexShrink: 0, fontWeight: "600" },
   button: { height: 50, width: "100%" },
 });

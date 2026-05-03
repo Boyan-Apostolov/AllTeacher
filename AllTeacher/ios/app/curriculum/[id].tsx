@@ -140,8 +140,8 @@ export default function CurriculumScreen() {
               await cacheSet(keys.weeks, w.weeks);
             }
           }
-        } else if (plan) {
-          // Row came from cache + plan is already rendered: refresh weeks + progress
+        } else if (cachedRow.planner_status === "complete") {
+          // Row came from cache and plan is ready — always load weeks + progress.
           const cachedWeeks = bust ? null : await cacheGet<WeekRow[]>(keys.weeks);
           if (cachedWeeks) {
             setWeeks(cachedWeeks);
@@ -309,27 +309,12 @@ export default function CurriculumScreen() {
     }
   };
 
-  // Header gradient changes by phase.
-  const headerColors = plan
-    ? { from: colors.brand, via: colors.brandDeep, to: "#3a1f9e" }
-    : summary
-      ? { from: colors.success, via: colors.brand, to: colors.brandDeep }
-      : { from: colors.brand, via: colors.accent, to: "#ff9966" };
-
   const goHome = () => router.replace("/");
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace("/");
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: headerColors.from,
-        via: headerColors.via,
-        to: headerColors.to,
-        angle: 150,
-        height: 320,
-      }}
-    >
+    <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
       <Toolbar
         title={plan ? "Your plan" : summary ? "Almost there" : "Assessment"}

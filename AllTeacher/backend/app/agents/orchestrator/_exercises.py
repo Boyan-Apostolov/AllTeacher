@@ -520,12 +520,20 @@ class _ExercisesMixin:
             # "To revisit" recap doesn't accumulate near-duplicates like
             # "time management" / "time management strategies" / one tag
             # accidentally translated into the target_language.
-            "existing_weak_areas": list(
-                curriculum.get("recent_weak_areas") or []
-            ),
-            "existing_strengths": list(
-                curriculum.get("recent_strengths") or []
-            ),
+            #
+            # Sanitize before sending: replace underscores with spaces so
+            # old snake_case tags (e.g. "goal_setting") don't get reused
+            # verbatim and propagate the broken format.
+            "existing_weak_areas": [
+                t.replace("_", " ").strip()
+                for t in (curriculum.get("recent_weak_areas") or [])
+                if isinstance(t, str) and t.strip()
+            ],
+            "existing_strengths": [
+                t.replace("_", " ").strip()
+                for t in (curriculum.get("recent_strengths") or [])
+                if isinstance(t, str) and t.strip()
+            ],
         }
         return ex, curriculum, payload
 

@@ -1,6 +1,5 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const progressScreenStyles = StyleSheet.create({
   content: {
@@ -8,74 +7,86 @@ export const progressScreenStyles = StyleSheet.create({
     gap: spacing.lg,
     paddingBottom: spacing.xxl,
   },
-
-  // Hero block above the cards.
+  heroBlock: { gap: spacing.xs },
   heroEyebrow: {
-    color: "#ffffffcc",
     fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 2,
+    fontWeight: "900",
+    color: colors.ink3,
+    letterSpacing: 1.2,
     textTransform: "uppercase",
   },
   heroTitle: {
-    color: colors.textOnDark,
-    fontSize: 26,
-    fontWeight: "800",
+    fontSize: 30,
+    fontWeight: "900",
+    color: colors.ink,
     letterSpacing: -0.4,
+    lineHeight: 36,
   },
   heroSubtitle: {
-    color: "#ffffffcc",
     fontSize: 14,
+    color: colors.ink3,
+    lineHeight: 20,
   },
-
   sectionLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.textMuted,
+    fontSize: 11,
+    fontWeight: "900",
+    color: colors.ink3,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
+    marginBottom: spacing.xs,
   },
-
-  // Per-curriculum picker rows.
   curriculumCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: spacing.lg,
-    gap: spacing.sm,
-    ...shadow.card,
+    gap: spacing.xs,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 4, height: 4 },
+    elevation: 4,
   },
   curriculumRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
+    borderBottomWidth: 1.5,
+    borderBottomColor: "rgba(26,20,16,0.10)",
   },
   curriculumRowLast: { borderBottomWidth: 0 },
-  curriculumEmoji: {
-    fontSize: 22,
-    width: 32,
-    textAlign: "center",
-  },
+  curriculumEmoji: { fontSize: 22, width: 32, textAlign: "center" },
   curriculumBody: { flex: 1, gap: 2 },
-  curriculumTitle: {
-    fontSize: 15,
-    color: colors.text,
-    fontWeight: "700",
-  },
-  curriculumMeta: { fontSize: 12, color: colors.textMuted },
+  curriculumTitle: { fontSize: 15, color: colors.ink, fontWeight: "700" },
+  curriculumMeta: { fontSize: 12, color: colors.ink3 },
   curriculumScore: {
     fontSize: 14,
-    fontWeight: "800",
-    color: colors.text,
+    fontWeight: "900",
+    color: colors.brand,
     minWidth: 44,
     textAlign: "right",
   },
-
+  tipCard: {
+    backgroundColor: colors.brandSoft,
+    borderRadius: 14,
+    padding: spacing.md,
+    gap: 4,
+    borderWidth: 1.5,
+    borderColor: colors.ink,
+  },
+  tipLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: colors.brand,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
+  },
+  tipText: { fontSize: 13, color: colors.ink2, lineHeight: 18 },
   empty: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: colors.ink3,
     fontStyle: "italic",
     paddingVertical: spacing.sm,
   },

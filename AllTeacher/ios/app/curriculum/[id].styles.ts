@@ -1,27 +1,30 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, radii, spacing } from "@/lib/theme";
 
 export const curriculumScreenStyles = StyleSheet.create({
   content: {
-    padding: spacing.lg,
+    paddingHorizontal: 20,
     gap: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 60,
   },
+
   emptyCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     padding: spacing.lg,
     borderRadius: radii.xl,
     gap: spacing.sm,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
-  emptyText: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  emptyText: { fontSize: 14, color: colors.ink, lineHeight: 20, fontWeight: "500" },
 
-  // ── Action buttons ("Add more sessions" / "Make it harder") ────────────
-  actionRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
+  // Action buttons ("Add more sessions" / "Make it harder")
+  actionRow: { flexDirection: "row", gap: spacing.sm },
   actionBtn: {
     flex: 1,
     flexDirection: "row",
@@ -30,34 +33,26 @@ export const curriculumScreenStyles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: spacing.sm,
     borderRadius: radii.lg,
+    borderWidth: 2,
+    borderColor: colors.ink,
     minHeight: 44,
-    ...shadow.card,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
-  actionBtnPrimary: {
-    backgroundColor: colors.brand,
-  },
-  actionBtnSecondary: {
-    backgroundColor: "#e8530a",
-  },
-  actionBtnDisabled: {
-    opacity: 0.6,
-  },
-  actionBtnText: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "600",
-    textAlign: "center",
-  },
+  actionBtnPrimary: { backgroundColor: colors.brand },
+  actionBtnSecondary: { backgroundColor: colors.mc },
+  actionBtnDisabled: { opacity: 0.5 },
+  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "800", textAlign: "center" },
+
   actionBanner: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.okSoft,
     borderRadius: radii.lg,
     padding: spacing.md,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.brand,
+    borderWidth: 2,
+    borderColor: colors.ink,
   },
-  actionBannerText: {
-    fontSize: 13,
-    color: colors.text,
-    lineHeight: 18,
-  },
+  actionBannerText: { fontSize: 13, color: colors.ink, lineHeight: 18, fontWeight: "600" },
 });

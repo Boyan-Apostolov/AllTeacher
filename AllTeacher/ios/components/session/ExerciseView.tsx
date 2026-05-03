@@ -126,7 +126,7 @@ export function ExerciseView({
 
       {submitting && !isStreaming ? (
         <View style={styles.scoring}>
-          <ActivityIndicator color={colors.textOnDark} />
+          <ActivityIndicator color={colors.ink3} />
           <Text style={styles.scoringText}>Scoring…</Text>
         </View>
       ) : null}
@@ -145,8 +145,8 @@ export function ExerciseView({
         <PrimaryCta
           label={isLast ? "Finish session 🎉" : "Next exercise →"}
           onPress={onNext}
-          from={accent.gradientFrom}
-          to={accent.gradientTo}
+          bg={accent.fg}
+          color="#fff"
         />
       ) : null}
     </View>

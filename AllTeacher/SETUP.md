@@ -645,3 +645,52 @@ QA + docs:
 Tick each box as you finish.
 
 Tick each box (`[x]`) as you finish.
+
+---
+
+## Recent changes
+
+### Neo-brutalist design overhaul (2026-05-03)
+
+Complete visual language swap across the entire iOS app — from dark-purple gradient-heavy UI to a warm neo-brutalist aesthetic (cream paper, coral brand, chunky ink borders, hard offset shadows, no soft blur shadows, no gradients anywhere).
+
+#### Design tokens (`ios/lib/theme.ts`)
+- `colors.paper` `#FBF4E6` (cream bg), `colors.card` `#FFFFFF`, `colors.ink` `#1A1410` (near-black)
+- `colors.brand` `#FF6B3D` (coral), `colors.mc` `#7C5CFF` (purple), `colors.flash` `#0BC5C2` (teal), `colors.short` `#FFB020` (gold)
+- `colors.ok` / `colors.warn` replace old `success` / `danger` / `warning` trio
+- `shadow.card` / `shadow.raised` use `shadowRadius: 0` + integer offsets (hard shadows, not blurs)
+- Legacy aliases kept so unredesigned components don't break
+
+#### New UI primitives
+- `Mascot.tsx` — owl SVG (5 moods: happy/thinking/cheer/sleepy/wink), lazy `react-native-svg` require, emoji fallback
+- `Sticker.tsx` — angled brutalist label tag: ink border + offset shadow, `rotate` + `uppercase` props
+- `Spark.tsx` — 8-pointed starburst SVG, lazy require
+- `BrutalCard.tsx` — white card with configurable ink border + hard shadow
+
+#### Screens + components redesigned
+| File | Change |
+|------|--------|
+| `components/ui/PrimaryCta` | Solid button: `height 56`, `borderWidth 2.5`, ink border, hard shadow; `bg`/`color` props replace gradient `from`/`to` |
+| `components/ui/Field` | White card with ink border + shadow; label floats inside |
+| `components/ui/Toolbar.styles` | 32×32 white square nav buttons with ink border |
+| `components/ui/ScreenContainer.styles` | `backgroundColor` → `colors.paper` |
+| `app/(auth)/login.tsx` | Mascot + "hey 👋" Sticker, "Welcome back." heading, brutalist fields |
+| `app/(auth)/signup.tsx` | Step Stickers, weekly-email checkbox row, `PrimaryCta` "Continue →" |
+| `app/index.tsx` | Streak hero card (coral), Spark decoration, 7-day dot grid, Today card with progress bar, dashed "+ New curriculum" row |
+| `app/curriculum/new.tsx` | "step 2 of 3" Sticker, 6 suggestion Stickers, goal textarea + char count |
+| `app/curriculum/[id].tsx` | Removed `headerColors` gradient; ScreenContainer called plain |
+| `components/curriculum/WeekCard` | White card, ink border, offset shadow; `weekColor()` cycles brand/flash/mc/short |
+| `components/curriculum/QuestionView` | Progress bar, Mascot speech bubble, A/B/C/D option cards |
+| `components/session/ExerciseHeader` | Progress bar track + colored fill + `Sticker` type label |
+| `components/session/LessonView` | Flash Sticker header, white card, pitfall box (brandSoft), "Start exercises →" in teal |
+| `components/session/MultipleChoice` | White option cards, ink border + offset shadow, square option dots |
+| `components/session/Flashcard` | Flip card: front = flash solid, back = white card; no Gradient; Hard/Medium/Easy rating row |
+| `components/session/ShortAnswer` | Ink-bordered input, `PrimaryCta` in gold |
+| `components/session/ListenChoice` | Flash play button with ink border; teal transcript card |
+| `components/session/FeedbackCard` | Verdict tones mapped to ok/warn/flash/short palette |
+| `components/session/FinishedView` | `scoreNumber` in coral, ink-bordered chart bars, brutalist recap + bonus cards |
+| `app/curriculum/session.tsx` | Removed gradient from ScreenContainer; ProgressBar uses `colors.brand` |
+| `app/admin.tsx` | Brutalist KPI tiles, ink borders on cards/rows/modal; tier pills (free=paperAlt, pro=brand, power=mc) |
+
+#### No-action needed
+All changes are pure style/layout. No API changes, no database migrations, no new npm packages. Run `npx expo start` as usual.

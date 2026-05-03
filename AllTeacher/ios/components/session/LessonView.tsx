@@ -1,28 +1,17 @@
 /**
- * Lesson screen — renders one Explainer-generated micro-lesson before the
- * exercises that drill the same concept.
- *
- * Shape comes from `LessonContent` in `lib/api.ts`:
- *   concept_title, intro, key_points[], example, pitfalls[], next_up.
- *
- * Length adapts upstream (the Explainer agent tunes its output to the
- * user's level) — this component just lays out whatever it gets, with
- * empty arrays gracefully hidden.
+ * Lesson screen — neo-brutalist redesign.
+ * Concept Sticker header, white card with ink border, pitfall box,
+ * example box, PrimaryCta "Start exercises →" in flash teal.
  */
 import { Text, View } from "react-native";
 
 import { PrimaryCta } from "@/components/ui";
+import { Sticker } from "@/components/ui/Sticker";
 import { MermaidDiagram } from "@/components/lesson/MermaidDiagram";
 import type { LessonRow } from "@/lib/api";
+import { colors } from "@/lib/theme";
 
 import { lessonViewStyles as styles } from "./LessonView.styles";
-
-const ACCENT = {
-  gradientFrom: "#a78bfa",
-  gradientTo: "#7c5cff",
-  emoji: "📚",
-  label: "Lesson",
-};
 
 export function LessonView({
   lesson,
@@ -40,19 +29,15 @@ export function LessonView({
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
-        <View style={styles.kindRow}>
-          <View style={styles.kindPill}>
-            <Text style={styles.kindEmoji}>{ACCENT.emoji}</Text>
-            <Text style={styles.kindText}>{ACCENT.label}</Text>
-          </View>
-          <Text style={styles.kindCount}>
-            Concept {Math.min(moduleIndex + 1, totalModules)} of {totalModules}
-          </Text>
-        </View>
+        <Sticker bg={colors.flash} color="#fff" rotate={-2} uppercase={false}>
+          📚 Concept {Math.min(moduleIndex + 1, totalModules)} of {totalModules}
+        </Sticker>
         <Text style={styles.title}>{title}</Text>
       </View>
 
+      {/* Content card */}
       <View style={styles.card}>
         {c.intro ? <Text style={styles.intro}>{c.intro}</Text> : null}
 
@@ -77,11 +62,6 @@ export function LessonView({
           </View>
         ) : null}
 
-        {/* Optional structural diagram — empty string means "no diagram
-            for this concept", which the Explainer prompt teaches as
-            the default for short text-only lessons. Renders below the
-            example so the diagram amplifies the worked example rather
-            than competing with the intro for attention. */}
         {c.diagram_mermaid && c.diagram_mermaid.trim().length > 0 ? (
           <View>
             <Text style={styles.sectionLabel}>Visual</Text>
@@ -91,7 +71,7 @@ export function LessonView({
 
         {c.pitfalls && c.pitfalls.length > 0 ? (
           <View style={styles.pitfallBox}>
-            <Text style={styles.pitfallLabel}>Watch out</Text>
+            <Text style={styles.pitfallLabel}>⚠️ Watch out</Text>
             {c.pitfalls.map((p, i) => (
               <View key={`pf-${i}`} style={styles.bulletRow}>
                 <Text style={styles.bulletDot}>•</Text>
@@ -102,13 +82,12 @@ export function LessonView({
         ) : null}
       </View>
 
-      {c.next_up ? <Text style={styles.nextUp}>{c.next_up}</Text> : null}
+      {c.next_up ? <Text style={styles.nextUp}>Up next: {c.next_up}</Text> : null}
 
       <PrimaryCta
         label="Start exercises →"
         onPress={onStartExercises}
-        from={ACCENT.gradientFrom}
-        to={ACCENT.gradientTo}
+        bg={colors.flash}
       />
     </View>
   );
