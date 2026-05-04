@@ -6,7 +6,7 @@ export const homeStyles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 40,
+    paddingBottom: 100, // extra space for bottom tab bar
     gap: 20,
   },
 
@@ -191,7 +191,11 @@ export const homeStyles = StyleSheet.create({
   diagDetail: { fontSize: 11, color: colors.ink4 },
   diagError: { fontSize: 11, color: colors.warn },
 
-  // Sign out
+  // Bottom row: sign out + optional admin button
+  bottomRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
   signOut: {
     paddingVertical: 12,
     alignItems: "center",
@@ -201,6 +205,10 @@ export const homeStyles = StyleSheet.create({
     borderStyle: "dashed",
   },
   signOutText: { fontSize: 14, color: colors.ink3, fontWeight: "600" },
+  adminBtn: {
+    flex: 0,
+    paddingHorizontal: 16,
+  },
 
   // Legacy compat fields used by the existing index.tsx render path
   hero: {},

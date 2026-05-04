@@ -5,7 +5,7 @@ export const vocabStyles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: 48,
+    paddingBottom: 100, // extra space for bottom tab bar
   },
 
   // ── Hero ───────────────────────────────────────────────────

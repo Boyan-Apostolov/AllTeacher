@@ -5,7 +5,7 @@ export const subStyles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: 48,
+    paddingBottom: 100, // extra space for bottom tab bar
   },
 
   // ── Hero ───────────────────────────────────────────────────
@@ -30,53 +30,12 @@ export const subStyles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // ── Current plan card ──────────────────────────────────────
-  currentCard: {
-    borderWidth: 2,
-    borderColor: colors.ink,
-    borderRadius: 16,
-    padding: spacing.lg,
-    gap: spacing.xs,
-    shadowColor: colors.ink,
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    shadowOffset: { width: 4, height: 4 },
-    elevation: 4,
-  },
-  currentLabel: {
-    fontSize: 11,
-    fontWeight: "900",
-    color: colors.ink3,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
-  },
-  currentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  currentTierName: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: colors.ink,
-    letterSpacing: -0.4,
-  },
-  currentBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: colors.ink,
-  },
-  currentBadgeText: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: "#fff",
-  },
+  // ── Current plan inline meta (shown inside the active tier card) ─
   currentMeta: {
     fontSize: 13,
     color: colors.ink3,
     lineHeight: 18,
+    marginTop: 2,
   },
 
   // ── Section label ──────────────────────────────────────────
@@ -103,7 +62,14 @@ export const subStyles = StyleSheet.create({
     elevation: 4,
   },
   tierCardActive: {
-    borderWidth: 2.5,
+    borderWidth: 3,
+    shadowOffset: { width: 5, height: 5 },
+  },
+  tierNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
   },
   tierHeader: {
     padding: spacing.lg,
@@ -203,6 +169,13 @@ export const subStyles = StyleSheet.create({
     elevation: 0,
   },
   upgradeBtnDisabledText: { color: colors.ink3 },
+  downgradeBtn: {
+    backgroundColor: colors.paperAlt,
+    shadowOpacity: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
+  downgradeBtnText: { color: colors.ink },
 
   // ── Feature comparison table ───────────────────────────────
   comparisonCard: {
@@ -261,35 +234,6 @@ export const subStyles = StyleSheet.create({
     borderLeftColor: "rgba(26,20,16,0.08)",
   },
   comparisonCheckText: { fontSize: 16 },
-
-  // ── Top plan banner (shown when user is already on Power) ──
-  topPlanBanner: {
-    backgroundColor: colors.mcSoft,
-    borderWidth: 2,
-    borderColor: colors.ink,
-    borderRadius: 16,
-    padding: spacing.lg,
-    alignItems: "center",
-    gap: spacing.sm,
-    shadowColor: colors.ink,
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    shadowOffset: { width: 3, height: 3 },
-    elevation: 3,
-  },
-  topPlanEmoji: { fontSize: 36 },
-  topPlanTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: colors.ink,
-    textAlign: "center",
-  },
-  topPlanBody: {
-    fontSize: 13,
-    color: colors.ink3,
-    textAlign: "center",
-    lineHeight: 19,
-  },
 
   // ── Bottom links ───────────────────────────────────────────
   linkRow: {

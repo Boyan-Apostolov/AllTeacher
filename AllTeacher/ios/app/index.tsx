@@ -314,24 +314,6 @@ export default function Home() {
           </View>
         </View>
 
-        {/* ── Nav CTAs ── */}
-        <View style={styles.heroCtaRow}>
-          <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/progress")}>
-            <Text style={styles.heroCtaGhostText}>📈 Progress</Text>
-          </Pressable>
-          <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/vocabulary")}>
-            <Text style={styles.heroCtaGhostText}>📖 Vocab</Text>
-          </Pressable>
-          <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/subscription")}>
-            <Text style={styles.heroCtaGhostText}>✦ Plans</Text>
-          </Pressable>
-          {isAdmin ? (
-            <Pressable style={styles.heroCtaGhost} onPress={() => router.push("/admin")}>
-              <Text style={styles.heroCtaGhostText}>🛠 Admin</Text>
-            </Pressable>
-          ) : null}
-        </View>
-
         {/* ── Diagnostics ── */}
         <View style={{ gap: spacing.sm }}>
           <Text style={styles.sectionLabel}>Diagnostics</Text>
@@ -346,9 +328,16 @@ export default function Home() {
           {meError ? <Text style={styles.diagError}>{meError}</Text> : null}
         </View>
 
-        <Pressable style={styles.signOut} onPress={signOut}>
-          <Text style={styles.signOutText}>Sign out</Text>
-        </Pressable>
+        <View style={styles.bottomRow}>
+          <Pressable style={[styles.signOut, { flex: 1 }]} onPress={signOut}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </Pressable>
+          {isAdmin ? (
+            <Pressable style={[styles.signOut, styles.adminBtn]} onPress={() => router.push("/admin")}>
+              <Text style={styles.signOutText}>🛠 Admin</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

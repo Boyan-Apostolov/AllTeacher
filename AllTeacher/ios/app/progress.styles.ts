@@ -5,7 +5,7 @@ export const progressScreenStyles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: spacing.xxl,
+    paddingBottom: 100, // extra space for bottom tab bar
   },
   heroBlock: { gap: spacing.xs },
   heroEyebrow: {

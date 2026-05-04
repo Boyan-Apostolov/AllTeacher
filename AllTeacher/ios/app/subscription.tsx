@@ -127,17 +127,30 @@ const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, power: 2 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
+type CardStatus = "current" | "upgrade" | "downgrade";
+
 function TierCard({
   plan,
-  onUpgrade,
+  status,
+  meta,
+  onPress,
 }: {
   plan: PlanDef;
-  onUpgrade: () => void;
+  status: CardStatus;
+  meta?: string | null;
+  onPress: () => void;
 }) {
+  const isCurrent = status === "current";
+
   return (
-    <View style={styles.tierCard}>
+    <View style={[styles.tierCard, isCurrent && styles.tierCardActive]}>
       {/* Header */}
-      <View style={styles.tierHeader}>
+      <View
+        style={[
+          styles.tierHeader,
+          isCurrent && { backgroundColor: plan.color + "14" },
+        ]}
+      >
         <View style={styles.tierHeaderRow}>
           <Text style={styles.tierEmoji}>{plan.emoji}</Text>
           <View style={styles.tierPriceBlock}>
@@ -145,8 +158,20 @@ function TierCard({
             <Text style={styles.tierPricePer}>{plan.pricePer}</Text>
           </View>
         </View>
-        <Text style={styles.tierName}>{plan.name}</Text>
+        <View style={styles.tierNameRow}>
+          <Text style={styles.tierName}>{plan.name}</Text>
+          {isCurrent && (
+            <View
+              style={[styles.currentChip, { backgroundColor: plan.color }]}
+            >
+              <Text style={styles.currentChipText}>Active</Text>
+            </View>
+          )}
+        </View>
         <Text style={styles.tierTagline}>{plan.tagline}</Text>
+        {isCurrent && meta ? (
+          <Text style={styles.currentMeta}>{meta}</Text>
+        ) : null}
       </View>
 
       {/* Features */}
@@ -160,12 +185,29 @@ function TierCard({
       </View>
 
       {/* CTA */}
-      <Pressable
-        style={[styles.upgradeBtn, { backgroundColor: plan.color }]}
-        onPress={onUpgrade}
-      >
-        <Text style={styles.upgradeBtnText}>Upgrade to {plan.name} →</Text>
-      </Pressable>
+      {status === "current" ? (
+        <View style={[styles.upgradeBtn, styles.upgradeBtnDisabled]}>
+          <Text style={[styles.upgradeBtnText, styles.upgradeBtnDisabledText]}>
+            Current plan
+          </Text>
+        </View>
+      ) : status === "upgrade" ? (
+        <Pressable
+          style={[styles.upgradeBtn, { backgroundColor: plan.color }]}
+          onPress={onPress}
+        >
+          <Text style={styles.upgradeBtnText}>Upgrade to {plan.name} →</Text>
+        </Pressable>
+      ) : (
+        <Pressable
+          style={[styles.upgradeBtn, styles.downgradeBtn]}
+          onPress={onPress}
+        >
+          <Text style={[styles.upgradeBtnText, styles.downgradeBtnText]}>
+            Switch to {plan.name}
+          </Text>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -211,8 +253,6 @@ export default function SubscriptionScreen() {
     (subscription?.tier as Tier) ??
     "free";
 
-  const currentPlan = PLANS.find((p) => p.tier === currentTier) ?? PLANS[0];
-
   const handleUpgrade = (plan: PlanDef) => {
     Alert.alert(
       `Upgrade to ${plan.name}`,
@@ -252,71 +292,55 @@ export default function SubscriptionScreen() {
           </Text>
         </View>
 
-        {/* ── Current plan ── */}
+        {/* ── All plans — single card per tier; current tier marked Active ── */}
         {loading ? (
           <LoadingBlock label="Loading your plan…" />
         ) : error ? (
           <MessageBox variant="error" title="Couldn't load plan" message={error} />
         ) : (
-          <View
-            style={[
-              styles.currentCard,
-              { backgroundColor: currentPlan.color + "14" },
-            ]}
-          >
-            <Text style={styles.currentLabel}>Your current plan</Text>
-            <View style={styles.currentRow}>
-              <Text style={styles.currentTierName}>
-                {currentPlan.emoji} {currentPlan.name}
-              </Text>
-              <View
-                style={[
-                  styles.currentBadge,
-                  { backgroundColor: currentPlan.color },
-                ]}
-              >
-                <Text style={styles.currentBadgeText}>Active</Text>
-              </View>
-            </View>
-            {subscription?.current_period_end && currentTier !== "free" ? (
-              <Text style={styles.currentMeta}>
-                Renews{" "}
-                {new Date(subscription.current_period_end).toLocaleDateString(
-                  undefined,
-                  { month: "long", day: "numeric", year: "numeric" },
-                )}
-              </Text>
-            ) : (
-              <Text style={styles.currentMeta}>
-                {currentTier === "free"
-                  ? "Free forever — upgrade any time."
-                  : "Managed via App Store."}
-              </Text>
-            )}
-          </View>
-        )}
-
-        {/* ── Upgrade options — only plans ranked above the current tier ── */}
-        {PLANS.filter((p) => TIER_RANK[p.tier] > TIER_RANK[currentTier]).length > 0 ? (
           <>
-            <Text style={styles.sectionLabel}>Upgrade options</Text>
-            {PLANS.filter((p) => TIER_RANK[p.tier] > TIER_RANK[currentTier]).map((plan) => (
-              <TierCard
-                key={plan.tier}
-                plan={plan}
-                onUpgrade={() => handleUpgrade(plan)}
-              />
-            ))}
+            <Text style={styles.sectionLabel}>Plans</Text>
+            {PLANS.map((plan) => {
+              const planRank = TIER_RANK[plan.tier];
+              const currentRank = TIER_RANK[currentTier];
+              const status: CardStatus =
+                planRank === currentRank
+                  ? "current"
+                  : planRank > currentRank
+                  ? "upgrade"
+                  : "downgrade";
+
+              let meta: string | null = null;
+              if (status === "current") {
+                if (
+                  subscription?.current_period_end &&
+                  currentTier !== "free"
+                ) {
+                  meta = `Renews ${new Date(
+                    subscription.current_period_end,
+                  ).toLocaleDateString(undefined, {
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                  })}`;
+                } else if (currentTier === "free") {
+                  meta = "Free forever — upgrade any time.";
+                } else {
+                  meta = "Managed via App Store.";
+                }
+              }
+
+              return (
+                <TierCard
+                  key={plan.tier}
+                  plan={plan}
+                  status={status}
+                  meta={meta}
+                  onPress={() => handleUpgrade(plan)}
+                />
+              );
+            })}
           </>
-        ) : (
-          <View style={styles.topPlanBanner}>
-            <Text style={styles.topPlanEmoji}>⚡</Text>
-            <Text style={styles.topPlanTitle}>You're on our best plan</Text>
-            <Text style={styles.topPlanBody}>
-              Power gives you unlimited curricula, priority AI, and every feature
-              we ship. Nothing left to unlock.
-            </Text>
-          </View>
         )}
 
         {/* ── Comparison table ── */}
