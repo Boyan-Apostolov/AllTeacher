@@ -1,20 +1,20 @@
 /**
- * Flashcard exercise body. Tap-to-flip animation with two faces, then
- * a hard/medium/easy self-rating that submits the result.
+ * Flashcard exercise body — neo-brutalist redesign.
+ * Both card faces are absolutely positioned inside the wrap frame
+ * (border/shadow on wrap only, overflow:hidden clips to borderRadius).
  */
 import { useRef, useState } from "react";
 import { Animated, Easing, Pressable, Text, View } from "react-native";
 
 import type { ExerciseContent, ExerciseRow } from "@/lib/api";
-import { Gradient } from "@/components/Gradient";
-import { spacing, typeAccent } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 import { flashcardStyles as styles } from "./Flashcard.styles";
 
 const RATING_BUTTONS = [
-  { r: "hard", label: "Hard", emoji: "😅", from: "#fb7185", to: "#e11d48" },
-  { r: "medium", label: "Medium", emoji: "🤔", from: "#fbbf24", to: "#d97706" },
-  { r: "easy", label: "Easy", emoji: "😎", from: "#86efac", to: "#16a34a" },
+  { r: "hard",   label: "Hard",   emoji: "😅", bg: colors.warn },
+  { r: "medium", label: "Medium", emoji: "🤔", bg: colors.short },
+  { r: "easy",   label: "Easy",   emoji: "😎", bg: colors.ok },
 ] as const;
 
 export function Flashcard({
@@ -31,7 +31,6 @@ export function Flashcard({
   const initial = Boolean(submission && "self_rating" in submission);
   const [revealed, setRevealed] = useState(initial);
   const flip = useRef(new Animated.Value(initial ? 1 : 0)).current;
-  const accent = typeAccent.flashcard;
 
   const chosenRating =
     submission && "self_rating" in submission ? submission.self_rating : null;
@@ -52,36 +51,22 @@ export function Flashcard({
     animateFlip(r);
   };
 
-  // Front face: 0deg → 180deg
-  const frontStyle = {
-    transform: [
-      {
-        rotateY: flip.interpolate({
-          inputRange: [0, 1],
-          outputRange: ["0deg", "180deg"],
-        }),
-      },
-    ],
-    opacity: flip.interpolate({
-      inputRange: [0, 0.5, 0.5001, 1],
-      outputRange: [1, 1, 0, 0],
-    }),
-  };
-  // Back face: 180deg → 360deg
-  const backStyle = {
-    transform: [
-      {
-        rotateY: flip.interpolate({
-          inputRange: [0, 1],
-          outputRange: ["180deg", "360deg"],
-        }),
-      },
-    ],
-    opacity: flip.interpolate({
-      inputRange: [0, 0.4999, 0.5, 1],
-      outputRange: [0, 0, 1, 1],
-    }),
-  };
+  const frontRotate = flip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "180deg"],
+  });
+  const backRotate = flip.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["180deg", "360deg"],
+  });
+  const frontOpacity = flip.interpolate({
+    inputRange: [0, 0.5, 0.5001, 1],
+    outputRange: [1, 1, 0, 0],
+  });
+  const backOpacity = flip.interpolate({
+    inputRange: [0, 0.4999, 0.5, 1],
+    outputRange: [0, 0, 1, 1],
+  });
 
   return (
     <View style={{ gap: spacing.lg }}>
@@ -92,45 +77,45 @@ export function Flashcard({
         accessibilityRole="button"
         accessibilityLabel={revealed ? "Show front" : "Reveal answer"}
       >
-        <Animated.View style={[styles.face, frontStyle]}>
-          <Gradient
-            from={accent.gradientFrom}
-            to={accent.gradientTo}
-            angle={140}
-            style={styles.gradient}
-          >
+        {/* Front face */}
+        <Animated.View
+          style={[
+            styles.face,
+            styles.frontBg,
+            { transform: [{ rotateY: frontRotate }], opacity: frontOpacity },
+          ]}
+        >
+          <View style={styles.faceInner}>
             <View style={styles.corner}>
               <Text style={styles.cornerText}>FRONT</Text>
             </View>
             <Text style={styles.emoji}>🃏</Text>
             <Text style={styles.text}>{content.front}</Text>
             <View style={styles.hintRow}>
-              <Text style={styles.hint}>Tap to reveal →</Text>
+              <Text style={styles.hint}>TAP TO REVEAL →</Text>
             </View>
-          </Gradient>
+          </View>
         </Animated.View>
 
+        {/* Back face */}
         <Animated.View
-          style={[styles.face, styles.faceAbs, backStyle]}
+          style={[
+            styles.face,
+            styles.backBg,
+            { transform: [{ rotateY: backRotate }], opacity: backOpacity },
+          ]}
           pointerEvents={revealed ? "auto" : "none"}
         >
-          <Gradient
-            from="#ffffff"
-            to="#f4eefe"
-            angle={150}
-            style={[styles.gradient, styles.back]}
-          >
+          <View style={styles.faceInner}>
             <View style={[styles.corner, styles.cornerLight]}>
-              <Text style={[styles.cornerText, styles.cornerTextLight]}>
-                BACK
-              </Text>
+              <Text style={[styles.cornerText, styles.cornerTextLight]}>BACK</Text>
             </View>
             <Text style={styles.emojiLight}>💡</Text>
             <Text style={styles.textDark}>{content.back}</Text>
             <View style={styles.hintRow}>
               <Text style={styles.hintDark}>Tap to flip back</Text>
             </View>
-          </Gradient>
+          </View>
         </Animated.View>
       </Pressable>
 
@@ -147,26 +132,17 @@ export function Flashcard({
                   disabled={disabled}
                   style={({ pressed }) => [
                     styles.ratingBtn,
+                    active && { backgroundColor: b.bg },
                     disabled && !active && styles.ratingBtnFaded,
                     pressed && !disabled && styles.ratingBtnPressed,
                   ]}
                 >
-                  {active ? (
-                    <Gradient
-                      from={b.from}
-                      to={b.to}
-                      angle={135}
-                      style={styles.ratingBtnGradient}
-                    >
-                      <Text style={styles.ratingEmoji}>{b.emoji}</Text>
-                      <Text style={styles.ratingTextActive}>{b.label}</Text>
-                    </Gradient>
-                  ) : (
-                    <View style={styles.ratingBtnInner}>
-                      <Text style={styles.ratingEmoji}>{b.emoji}</Text>
-                      <Text style={styles.ratingText}>{b.label}</Text>
-                    </View>
-                  )}
+                  <View style={active ? styles.ratingBtnActive : styles.ratingBtnInner}>
+                    <Text style={styles.ratingEmoji}>{b.emoji}</Text>
+                    <Text style={[styles.ratingText, active && styles.ratingTextActive]}>
+                      {b.label}
+                    </Text>
+                  </View>
                 </Pressable>
               );
             })}

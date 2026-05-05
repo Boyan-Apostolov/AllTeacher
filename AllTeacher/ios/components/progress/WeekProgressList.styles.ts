@@ -1,21 +1,31 @@
 import { StyleSheet } from "react-native";
 
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
+
+const INK_SHADOW = {
+  shadowColor: colors.ink,
+  shadowOpacity: 1,
+  shadowRadius: 0,
+  shadowOffset: { width: 3, height: 3 },
+  elevation: 3,
+};
 
 export const weekProgressListStyles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: spacing.lg,
     gap: spacing.sm,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    ...INK_SHADOW,
   },
   header: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: 0.4,
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.8,
     textTransform: "uppercase",
-    color: colors.text,
+    color: colors.ink3,
     marginBottom: spacing.xs,
   },
   row: {
@@ -27,20 +37,22 @@ export const weekProgressListStyles = StyleSheet.create({
   index: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: 8,
     backgroundColor: colors.brandSoft,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1.5,
+    borderColor: colors.ink,
   },
-  indexComplete: { backgroundColor: colors.successSoft },
-  indexBonus: { backgroundColor: colors.accentSoft },
+  indexComplete: { backgroundColor: colors.okSoft },
+  indexBonus: { backgroundColor: colors.flashSoft },
   indexText: {
     fontSize: 12,
-    fontWeight: "800",
-    color: colors.brandDeep,
+    fontWeight: "900",
+    color: colors.brand,
   },
-  indexCompleteText: { color: "#15803d" },
-  indexBonusText: { color: "#9d174d" },
+  indexCompleteText: { color: colors.ok },
+  indexBonusText: { color: colors.flash },
 
   body: { flex: 1, gap: 2 },
   titleRow: {
@@ -51,27 +63,29 @@ export const weekProgressListStyles = StyleSheet.create({
   title: {
     flex: 1,
     fontSize: 15,
-    color: colors.text,
+    color: colors.ink,
     fontWeight: "700",
   },
   bonusBadge: {
     fontSize: 10,
-    fontWeight: "800",
-    color: "#9d174d",
-    backgroundColor: colors.accentSoft,
+    fontWeight: "900",
+    color: colors.flash,
+    backgroundColor: colors.flashSoft,
     paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: radii.pill,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.flash,
   },
-  meta: { fontSize: 12, color: colors.textMuted },
+  meta: { fontSize: 12, color: colors.ink3 },
 
   scoreCol: { alignItems: "flex-end", minWidth: 56 },
-  scoreText: { fontSize: 14, fontWeight: "800", color: colors.text },
-  scoreLabel: { fontSize: 10, color: colors.textFaint },
+  scoreText: { fontSize: 14, fontWeight: "900", color: colors.brand },
+  scoreLabel: { fontSize: 10, color: colors.ink3 },
 
   empty: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: colors.ink3,
     fontStyle: "italic",
     paddingVertical: spacing.sm,
   },

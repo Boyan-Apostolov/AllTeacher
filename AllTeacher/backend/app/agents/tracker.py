@@ -152,6 +152,32 @@ def _tags_from_feedback(
     ]
 
 
+def mastered_concepts(
+    rows: Iterable[dict[str, Any]],
+    min_count: int = 2,
+    limit: int = 20,
+) -> list[str]:
+    """Derive mastered concepts from exercise feedback_json strength tags.
+
+    A concept is considered "mastered" when its strength tag has appeared
+    in at least `min_count` evaluated exercises. Returns a plain list of
+    tag strings, most-frequently-confirmed first, capped to `limit`.
+
+    These are passed to the Explainer so each new lesson opens with a
+    brief acknowledgement of what the user has already locked in.
+    """
+    counter: Counter[str] = Counter()
+    for r in rows:
+        fb = r.get("feedback_json") or {}
+        for tag in (fb.get("strengths") or []):
+            if isinstance(tag, str) and tag.strip():
+                counter[tag.strip()] += 1
+    return [
+        tag for tag, count in counter.most_common(limit)
+        if count >= min_count
+    ]
+
+
 # --- public surfaces ---
 
 def dashboard_summary(db, user_id: str) -> dict[str, Any]:
@@ -435,6 +461,7 @@ def curriculum_progress(db, curriculum_id: str) -> dict[str, Any]:
 
     top_weak = _tags_from_feedback(exes, "weak_areas", TOP_TAGS_DEFAULT)
     top_strengths = _tags_from_feedback(exes, "strengths", TOP_TAGS_DEFAULT)
+    mastered = mastered_concepts(exes)
 
     days = _activity_days_for_curricula(db, [curriculum_id])
     streak = _streak_from_days(set(days))
@@ -458,6 +485,7 @@ def curriculum_progress(db, curriculum_id: str) -> dict[str, Any]:
         "weeks": weeks_out,
         "top_weak_areas": top_weak,
         "top_strengths": top_strengths,
+        "mastered_concepts": mastered,
         "streak": streak,
         "activity": activity,
     }

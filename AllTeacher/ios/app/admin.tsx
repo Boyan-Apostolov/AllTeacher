@@ -50,7 +50,7 @@ import {
   ScreenContainer,
   Toolbar,
 } from "@/components/ui";
-import { colors, radii, shadow, spacing, type } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 // --- formatters --------------------------------------------------------
 
@@ -77,7 +77,7 @@ function MiniLine({
   stroke: string;
 }) {
   if (series.length === 0) {
-    return <Text style={type.caption}>No data yet.</Text>;
+    return <Text style={{ fontSize: 12, color: colors.ink3 }}>No data yet.</Text>;
   }
   const max = Math.max(1, ...series.map((p) => p.value));
   return (
@@ -117,10 +117,10 @@ function Kpi({
 }) {
   const valueColor =
     tone === "good"
-      ? colors.success
+      ? colors.ok
       : tone === "bad"
-      ? colors.danger
-      : colors.text;
+      ? colors.warn
+      : colors.ink;
   return (
     <View style={styles.kpi}>
       <Text style={styles.kpiLabel}>{label}</Text>
@@ -319,12 +319,12 @@ export default function AdminScreen() {
             <Text style={styles.subtleHint}>
               Total {fmtMoneyCents(usage.total_cost_cents, usage.currency)}
             </Text>
-            <MiniLine series={usage.series} stroke={colors.danger} />
+            <MiniLine series={usage.series} stroke={colors.warn} />
             <Text style={[styles.sectionTitle, { marginTop: spacing.md }]}>
               By agent
             </Text>
             {usage.by_agent.length === 0 ? (
-              <Text style={type.caption}>No agent activity yet.</Text>
+              <Text style={{ fontSize: 12, color: colors.ink3 }}>No agent activity yet.</Text>
             ) : (
               usage.by_agent.map((a) => (
                 <View key={a.agent} style={styles.row}>
@@ -384,7 +384,7 @@ export default function AdminScreen() {
                 <Text style={styles.rowValue}>
                   {fmtMoneyCents(m.revenue_cents, "EUR")}
                 </Text>
-                <Text style={[styles.rowHint, { color: colors.danger }]}>
+                <Text style={[styles.rowHint, { color: colors.warn }]}>
                   −{fmtMoneyCents(m.cost_cents, "USD")}
                 </Text>
                 <Text
@@ -393,8 +393,8 @@ export default function AdminScreen() {
                     {
                       color:
                         m.margin_cents >= 0
-                          ? colors.success
-                          : colors.danger,
+                          ? colors.ok
+                          : colors.warn,
                       fontWeight: "700",
                     },
                   ]}
@@ -404,10 +404,7 @@ export default function AdminScreen() {
               </View>
             ))}
             <Text
-              style={[
-                type.caption,
-                { marginTop: spacing.xs, color: colors.textFaint },
-              ]}
+              style={{ fontSize: 12, color: colors.ink4, marginTop: spacing.xs }}
             >
               Note: revenue in EUR, cost in USD — small FX drift.
             </Text>
@@ -693,6 +690,22 @@ function SegOption({
 
 // --- styles -----------------------------------------------------------
 
+const INK_SHADOW = {
+  shadowColor: colors.ink,
+  shadowOpacity: 1 as const,
+  shadowRadius: 0,
+  shadowOffset: { width: 3, height: 3 },
+  elevation: 3,
+};
+
+const RAISED_SHADOW = {
+  shadowColor: colors.ink,
+  shadowOpacity: 1 as const,
+  shadowRadius: 0,
+  shadowOffset: { width: 5, height: 5 },
+  elevation: 5,
+};
+
 const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
@@ -700,18 +713,25 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: spacing.lg,
     gap: spacing.sm,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    ...INK_SHADOW,
   },
   sectionTitle: {
-    ...type.h3,
+    fontSize: 13,
+    fontWeight: "900",
+    color: colors.ink,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
   subtleHint: {
-    ...type.caption,
-    color: colors.textMuted,
+    fontSize: 12,
+    color: colors.ink3,
+    lineHeight: 18,
   },
   kpiGrid: {
     flexDirection: "row",
@@ -722,22 +742,30 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     flexBasis: "30%",
     minWidth: 110,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    backgroundColor: colors.card,
+    borderRadius: 12,
     padding: spacing.md,
     gap: 2,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    ...INK_SHADOW,
   },
   kpiLabel: {
-    ...type.label,
+    fontSize: 11,
+    fontWeight: "800",
+    color: colors.ink3,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   kpiValue: {
     fontSize: 22,
-    fontWeight: "800",
-    color: colors.text,
+    fontWeight: "900",
+    color: colors.ink,
   },
   kpiHint: {
-    ...type.caption,
+    fontSize: 12,
+    color: colors.ink3,
+    lineHeight: 17,
   },
   tierRow: {
     flexDirection: "row",
@@ -748,24 +776,24 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     paddingVertical: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomWidth: 1.5,
+    borderBottomColor: "rgba(26,20,16,0.10)",
   },
   rowLabel: {
     flex: 1,
-    color: colors.text,
+    color: colors.ink,
     fontSize: 14,
     fontWeight: "600",
   },
   rowValue: {
-    color: colors.text,
+    color: colors.ink,
     fontSize: 14,
-    fontWeight: "700",
+    fontWeight: "800",
     minWidth: 60,
     textAlign: "right",
   },
   rowHint: {
-    color: colors.textMuted,
+    color: colors.ink3,
     fontSize: 12,
     minWidth: 70,
     textAlign: "right",
@@ -783,15 +811,17 @@ const styles = StyleSheet.create({
   },
   chartBar: {
     width: "100%",
-    borderTopLeftRadius: 2,
-    borderTopRightRadius: 2,
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
+    borderWidth: 1,
+    borderColor: colors.ink,
   },
 
-  // --- per-user grant row ---------------------------------------------
+  // --- per-user grant row ---
   userRow: {
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    borderBottomWidth: 1.5,
+    borderBottomColor: "rgba(26,20,16,0.10)",
     gap: 6,
   },
   userRowTop: {
@@ -806,71 +836,86 @@ const styles = StyleSheet.create({
   },
   tierPill: {
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: radii.pill,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.ink,
   },
   tierPillFree: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.paperAlt,
   },
   tierPillPro: {
     backgroundColor: colors.brand,
   },
   tierPillPower: {
-    backgroundColor: colors.brandDeep,
+    backgroundColor: colors.mc,
   },
   tierPillText: {
     fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.6,
-    color: "#fff",
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    color: colors.ink,
   },
   actionBtn: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    borderRadius: 999,
     backgroundColor: colors.brand,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    ...INK_SHADOW,
   },
   actionBtnDisabled: {
-    opacity: 0.5,
+    opacity: 0.45,
   },
   actionBtnText: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   actionBtnGhost: {
-    backgroundColor: "transparent",
-    borderWidth: 1,
-    borderColor: colors.border,
+    backgroundColor: colors.card,
+    borderColor: colors.ink,
   },
   actionBtnGhostText: {
-    color: colors.text,
+    color: colors.ink,
     fontSize: 12,
     fontWeight: "700",
   },
 
-  // --- modal -----------------------------------------------------------
+  // --- modal ---
   modalScrim: {
     flex: 1,
-    backgroundColor: "#00000099",
+    backgroundColor: "rgba(26,20,16,0.65)",
     justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
   modalCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.lg,
+    backgroundColor: colors.paper,
+    borderRadius: 20,
+    padding: spacing.xl,
     gap: spacing.sm,
+    borderWidth: 2.5,
+    borderColor: colors.ink,
+    ...RAISED_SHADOW,
   },
   modalTitle: {
-    ...type.h2,
+    fontSize: 22,
+    fontWeight: "900",
+    color: colors.ink,
+    letterSpacing: -0.3,
   },
   modalSubtitle: {
-    ...type.bodyMuted,
+    fontSize: 14,
+    color: colors.ink3,
     marginBottom: spacing.sm,
   },
   modalLabel: {
-    ...type.label,
+    fontSize: 11,
+    fontWeight: "900",
+    color: colors.ink3,
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
     marginTop: spacing.sm,
   },
   segmented: {
@@ -880,22 +925,25 @@ const styles = StyleSheet.create({
   segOption: {
     flex: 1,
     paddingVertical: 10,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.border,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: colors.ink,
     alignItems: "center",
+    backgroundColor: colors.card,
+    ...INK_SHADOW,
   },
   segOptionActive: {
     backgroundColor: colors.brand,
-    borderColor: colors.brand,
+    borderColor: colors.ink,
   },
   segOptionText: {
-    color: colors.text,
+    color: colors.ink,
     fontSize: 13,
     fontWeight: "700",
   },
   segOptionTextActive: {
     color: "#fff",
+    fontWeight: "900",
   },
   modalActions: {
     flexDirection: "row",

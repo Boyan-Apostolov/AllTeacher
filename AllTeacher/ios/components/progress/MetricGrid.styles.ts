@@ -1,38 +1,35 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const metricGridStyles = StyleSheet.create({
-  grid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-  },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   cell: {
     flexBasis: "48%",
     flexGrow: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderRadius: 14,
     padding: spacing.md,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
   label: {
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "900",
     letterSpacing: 0.6,
     textTransform: "uppercase",
-    color: colors.textMuted,
+    color: colors.ink3,
     marginBottom: 4,
   },
   value: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "900",
-    color: colors.text,
-    letterSpacing: -0.4,
+    color: colors.ink,
+    letterSpacing: -0.5,
   },
-  hint: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 2,
-  },
+  hint: { fontSize: 12, color: colors.ink3, marginTop: 2 },
 });

@@ -5,13 +5,15 @@
  *   2. Assessment summary + "Generate plan" CTA
  *   3. Plan view: title, summary, phases, week cards
  *
- * Rendering for each state lives in `components/curriculum/`.
+ * Caching strategy: cache-first, pull-to-refresh.
+ *   • getCurriculum / getWeeks / getCurriculumProgress are cached.
+ *   • useFocusEffect auto-refresh removed — swipe-down only.
+ *   • session.tsx invalidates the cache prefix when a session finishes.
  */
 import { useCallback, useEffect, useState } from "react";
-import { ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import {
   Stack,
-  useFocusEffect,
   useLocalSearchParams,
   useRouter,
 } from "expo-router";
@@ -26,6 +28,7 @@ import {
   type WeekRow,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { cacheGet, cacheSet, cacheDelPrefix } from "@/lib/cache";
 import {
   PlanView,
   QuestionView,
@@ -42,6 +45,24 @@ import { colors } from "@/lib/theme";
 
 import { curriculumScreenStyles as styles } from "./[id].styles";
 
+// Cache key helpers — group everything under `curriculum:<id>:*` so
+// cacheDelPrefix("curriculum:<id>") wipes them all at once.
+const ck = (id: string) => ({
+  detail:   `curriculum:${id}`,
+  weeks:    `curriculum:${id}:weeks`,
+  progress: `curriculum:${id}:progress`,
+});
+
+type CurriculumRow = {
+  assessor_status?: string;
+  planner_status?: string;
+  plan_json?: PlanOverview | null;
+  assessment_json?: {
+    transcript?: Array<{ question: string; options: string[]; answer: string | null }>;
+    summary?: AssessorSummary;
+  };
+};
+
 export default function CurriculumScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -50,6 +71,7 @@ export default function CurriculumScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [next, setNext] = useState<AssessorQuestion | null>(null);
   const [summary, setSummary] = useState<AssessorSummary | null>(null);
@@ -59,94 +81,116 @@ export default function CurriculumScreen() {
   const [weeks, setWeeks] = useState<WeekRow[] | null>(null);
   const [planning, setPlanning] = useState(false);
 
-  const [progress, setProgress] =
-    useState<CurriculumProgressDetail | null>(null);
+  const [progress, setProgress] = useState<CurriculumProgressDetail | null>(null);
   const [replanning, setReplanning] = useState(false);
+  const [addingSessions, setAddingSessions] = useState(false);
+  const [makingHarder, setMakingHarder] = useState(false);
+  const [actionBanner, setActionBanner] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!id || !session?.access_token) return;
-    let cancelled = false;
-    const token = session.access_token;
+  // ── Apply a fetched curriculum row to local state ──────────────────────
+  const applyRow = useCallback((row: CurriculumRow) => {
+    const transcript = row.assessment_json?.transcript ?? [];
+    setQuestionCount(transcript.length);
 
-    (async () => {
+    if (row.planner_status === "complete" && row.plan_json) {
+      setPlan(row.plan_json);
+      setSummary(row.assessment_json?.summary ?? null);
+    } else if (row.assessor_status === "complete" && row.assessment_json?.summary) {
+      setSummary(row.assessment_json.summary);
+      setNext(null);
+    } else {
+      const last = transcript[transcript.length - 1];
+      if (last && last.answer === null) {
+        setNext({ question: last.question, options: last.options });
+      } else {
+        setNext(null);
+      }
+    }
+  }, []);
+
+  // ── Core loader — used on mount and pull-to-refresh ───────────────────
+  const load = useCallback(
+    async (token: string, bust = false) => {
+      if (!id) return;
+      const keys = ck(id);
+      setError(null);
+
       try {
-        const row = (await api.getCurriculum(token, id)) as {
-          assessor_status?: string;
-          planner_status?: string;
-          plan_json?: PlanOverview | null;
-          assessment_json?: {
-            transcript?: Array<{
-              question: string;
-              options: string[];
-              answer: string | null;
-            }>;
-            summary?: AssessorSummary;
-          };
-        };
-        if (cancelled) return;
+        // 1. Curriculum row
+        const cachedRow = bust ? null : await cacheGet<CurriculumRow>(keys.detail);
+        if (cachedRow) {
+          applyRow(cachedRow);
+          setLoading(false);
+        }
 
-        const transcript = row.assessment_json?.transcript ?? [];
-        setQuestionCount(transcript.length);
+        if (!cachedRow || bust) {
+          const row = await api.getCurriculum(token, id) as CurriculumRow;
+          applyRow(row);
+          await cacheSet(keys.detail, row);
+          setLoading(false);
 
-        if (row.planner_status === "complete" && row.plan_json) {
-          setPlan(row.plan_json);
-          setSummary(row.assessment_json?.summary ?? null);
-          try {
-            const w = await api.getWeeks(token, id);
-            if (!cancelled) setWeeks(w.weeks);
-          } catch {}
-        } else if (
-          row.assessor_status === "complete" &&
-          row.assessment_json?.summary
-        ) {
-          setSummary(row.assessment_json.summary);
-          setNext(null);
-        } else {
-          const last = transcript[transcript.length - 1];
-          if (last && last.answer === null) {
-            setNext({ question: last.question, options: last.options });
+          // 2. Weeks — only needed once plan is ready
+          if (row.planner_status === "complete") {
+            const cachedWeeks = bust ? null : await cacheGet<WeekRow[]>(keys.weeks);
+            if (cachedWeeks) {
+              setWeeks(cachedWeeks);
+            } else {
+              const w = await api.getWeeks(token, id);
+              setWeeks(w.weeks);
+              await cacheSet(keys.weeks, w.weeks);
+            }
+          }
+        } else if (cachedRow.planner_status === "complete") {
+          // Row came from cache and plan is ready — always load weeks + progress.
+          const cachedWeeks = bust ? null : await cacheGet<WeekRow[]>(keys.weeks);
+          if (cachedWeeks) {
+            setWeeks(cachedWeeks);
           } else {
-            setNext(null);
+            const w = await api.getWeeks(token, id).catch(() => null);
+            if (w) {
+              setWeeks(w.weeks);
+              await cacheSet(keys.weeks, w.weeks);
+            }
+          }
+        }
+
+        // 3. Progress — only when plan is ready
+        const cachedProgress = bust
+          ? null
+          : await cacheGet<CurriculumProgressDetail>(keys.progress);
+        if (cachedProgress) {
+          setProgress(cachedProgress);
+        } else {
+          const p = await api.getCurriculumProgress(token, id).catch(() => null);
+          if (p) {
+            setProgress(p);
+            await cacheSet(keys.progress, p);
           }
         }
       } catch (e) {
-        if (!cancelled) setError((e as Error).message);
-      } finally {
-        if (!cancelled) setLoading(false);
+        setError((e as Error).message);
+        setLoading(false);
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [id, session?.access_token]);
-
-  // Refresh weeks + progress when the screen regains focus, so completed
-  // sessions show their new status without forcing the user to leave and
-  // re-enter.
-  useFocusEffect(
-    useCallback(() => {
-      if (!id || !session?.access_token || !plan) return;
-      let cancelled = false;
-      const token = session.access_token;
-      api
-        .getWeeks(token, id)
-        .then((w) => {
-          if (!cancelled) setWeeks(w.weeks);
-        })
-        .catch(() => {});
-      api
-        .getCurriculumProgress(token, id)
-        .then((p) => {
-          if (!cancelled) setProgress(p);
-        })
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }, [id, session?.access_token, plan]),
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [id, applyRow],
   );
 
+  // ── Mount ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!id || !session?.access_token) return;
+    load(session.access_token, false);
+  }, [id, session?.access_token, load]);
+
+  // ── Pull-to-refresh ────────────────────────────────────────────────────
+  const onRefresh = useCallback(async () => {
+    if (!session?.access_token) return;
+    setRefreshing(true);
+    await load(session.access_token, true);
+    setRefreshing(false);
+  }, [session?.access_token, load]);
+
+  // ── Assessor ───────────────────────────────────────────────────────────
   const applyStep = (res: AssessorStepResponse) => {
     if (res.complete) {
       setSummary(res.complete);
@@ -163,12 +207,10 @@ export default function CurriculumScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await api.submitAssessorAnswer(
-        session.access_token,
-        id,
-        choice,
-      );
+      const res = await api.submitAssessorAnswer(session.access_token, id, choice);
       applyStep(res);
+      // Bust the detail cache so cold-opens reflect the new answer.
+      if (id) await cacheDelPrefix(`curriculum:${id}`);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -183,20 +225,57 @@ export default function CurriculumScreen() {
     try {
       const token = session.access_token;
       await api.replan(token, id);
-      // Refresh the week list + progress strip so the new bonus / rewritten
-      // weeks show up immediately.
-      try {
-        const w = await api.getWeeks(token, id);
-        setWeeks(w.weeks);
-      } catch {}
-      try {
-        const p = await api.getCurriculumProgress(token, id);
-        setProgress(p);
-      } catch {}
+      await cacheDelPrefix(`curriculum:${id}`);
+      const w = await api.getWeeks(token, id).catch(() => null);
+      if (w) { setWeeks(w.weeks); await cacheSet(ck(id).weeks, w.weeks); }
+      const p = await api.getCurriculumProgress(token, id).catch(() => null);
+      if (p) { setProgress(p); await cacheSet(ck(id).progress, p); }
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setReplanning(false);
+    }
+  };
+
+  const addMoreSessions = async () => {
+    if (!id || !session?.access_token) return;
+    setAddingSessions(true);
+    setError(null);
+    setActionBanner(null);
+    try {
+      const token = session.access_token;
+      // Generate 5 bonus exercises targeting weak areas. No new weeks needed.
+      await api.addMoreSessions(token, id);
+      await cacheDelPrefix(`curriculum:${id}`);
+      const p = await api.getCurriculumProgress(token, id).catch(() => null);
+      if (p) { setProgress(p); await cacheSet(ck(id).progress, p); }
+      setActionBanner("Bonus exercises added! Open any week to practise them.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setAddingSessions(false);
+    }
+  };
+
+  const makeHarder = async () => {
+    if (!id || !session?.access_token) return;
+    setMakingHarder(true);
+    setError(null);
+    setActionBanner(null);
+    try {
+      const token = session.access_token;
+      await api.makeHarder(token, id);
+      await cacheDelPrefix(`curriculum:${id}`);
+      // Reload weeks + progress so the updated plan is visible immediately.
+      const w = await api.getWeeks(token, id).catch(() => null);
+      if (w) { setWeeks(w.weeks); await cacheSet(ck(id).weeks, w.weeks); }
+      const p = await api.getCurriculumProgress(token, id).catch(() => null);
+      if (p) { setProgress(p); await cacheSet(ck(id).progress, p); }
+      setActionBanner("Plan updated — upcoming weeks are now more challenging.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setMakingHarder(false);
     }
   };
 
@@ -205,11 +284,14 @@ export default function CurriculumScreen() {
     setPlanning(true);
     setError(null);
     try {
-      const res = await api.generatePlan(session.access_token, id);
+      const token = session.access_token;
+      const res = await api.generatePlan(token, id);
       setPlan(res.plan);
+      await cacheDelPrefix(`curriculum:${id}`);
       try {
-        const w = await api.getWeeks(session.access_token, id);
+        const w = await api.getWeeks(token, id);
         setWeeks(w.weeks);
+        await cacheSet(ck(id).weeks, w.weeks);
       } catch {
         setWeeks(
           res.weeks.map((pw) => ({
@@ -227,27 +309,12 @@ export default function CurriculumScreen() {
     }
   };
 
-  // Header gradient changes by phase.
-  const headerColors = plan
-    ? { from: colors.brand, via: colors.brandDeep, to: "#3a1f9e" }
-    : summary
-      ? { from: colors.success, via: colors.brand, to: colors.brandDeep }
-      : { from: colors.brand, via: colors.accent, to: "#ff9966" };
-
   const goHome = () => router.replace("/");
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace("/");
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: headerColors.from,
-        via: headerColors.via,
-        to: headerColors.to,
-        angle: 150,
-        height: 320,
-      }}
-    >
+    <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
       <Toolbar
         title={plan ? "Your plan" : summary ? "Almost there" : "Assessment"}
@@ -258,6 +325,13 @@ export default function CurriculumScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand}
+          />
+        }
       >
         {loading ? (
           <LoadingBlock label="Loading…" />
@@ -271,6 +345,48 @@ export default function CurriculumScreen() {
                 onOpenDashboard={() => router.push("/progress")}
               />
             ) : null}
+
+            {/* Action buttons */}
+            <View style={styles.actionRow}>
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnPrimary,
+                  addingSessions && styles.actionBtnDisabled,
+                ]}
+                onPress={addMoreSessions}
+                disabled={addingSessions || makingHarder}
+              >
+                {addingSessions ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.actionBtnText}>＋ Add more sessions</Text>
+                )}
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.actionBtn,
+                  styles.actionBtnSecondary,
+                  makingHarder && styles.actionBtnDisabled,
+                ]}
+                onPress={makeHarder}
+                disabled={addingSessions || makingHarder}
+              >
+                {makingHarder ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.actionBtnText}>🔥 Make it harder</Text>
+                )}
+              </Pressable>
+            </View>
+
+            {actionBanner ? (
+              <View style={styles.actionBanner}>
+                <Text style={styles.actionBannerText}>{actionBanner}</Text>
+              </View>
+            ) : null}
+
             <PlanView
               plan={plan}
               weeks={weeks ?? []}

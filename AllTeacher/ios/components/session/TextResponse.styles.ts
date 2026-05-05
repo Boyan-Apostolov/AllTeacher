@@ -1,69 +1,85 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 /**
- * Shared styles for the short-answer + essay-prompt exercise bodies.
- * Both render a labelled prompt, an optional rubric/meta, and a multiline
- * text input that submits via the shared PrimaryCta.
+ * Shared styles for short-answer + essay-prompt exercise bodies.
  */
 export const textResponseStyles = StyleSheet.create({
   prompt: {
-    fontSize: 17,
-    color: colors.text,
-    lineHeight: 24,
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.ink,
+    lineHeight: 26,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 16,
     padding: spacing.lg,
-    ...shadow.card,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
   textInput: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1.5,
-    borderColor: "transparent",
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.ink,
     paddingHorizontal: 14,
     paddingVertical: 14,
     fontSize: 16,
     minHeight: 80,
-    color: colors.text,
-    ...shadow.card,
+    color: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
   textInputTall: { minHeight: 200, textAlignVertical: "top" },
-  textInputFocused: { borderColor: colors.brand },
-  textInputDisabled: { opacity: 0.7 },
+  textInputFocused: {
+    borderColor: colors.short,
+    shadowOffset: { width: 4, height: 4 },
+  },
+  textInputDisabled: { opacity: 0.6 },
 
   metaPill: {
     alignSelf: "flex-start",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.pill,
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: "600",
+    backgroundColor: colors.paperAlt,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    borderColor: colors.ink,
     overflow: "hidden",
   },
+  metaPillText: {
+    fontSize: 12,
+    color: colors.ink,
+    fontWeight: "700",
+  },
   rubricCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.shortSoft,
+    borderWidth: 2,
+    borderColor: colors.ink,
     padding: spacing.lg,
-    borderRadius: radii.lg,
+    borderRadius: 14,
     gap: spacing.sm,
-    ...shadow.card,
   },
   rubricTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.brand,
+    fontSize: 11,
+    fontWeight: "900",
+    color: colors.short,
     textTransform: "uppercase",
-    letterSpacing: 0.6,
+    letterSpacing: 0.8,
   },
   rubricRow: { flexDirection: "row", gap: 8 },
-  rubricBullet: { color: colors.brand, fontSize: 16, fontWeight: "800" },
+  rubricBullet: { color: colors.short, fontSize: 16, fontWeight: "900" },
   rubricText: {
     flex: 1,
     fontSize: 14,
-    color: colors.text,
+    color: colors.ink2,
     lineHeight: 20,
   },
 });

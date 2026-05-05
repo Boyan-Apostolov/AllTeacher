@@ -32,6 +32,7 @@ import {
   type PlanModule,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { cacheDelPrefix } from "@/lib/cache";
 import {
   ExerciseView,
   FinishedView,
@@ -44,7 +45,7 @@ import {
   ScreenContainer,
   Toolbar,
 } from "@/components/ui";
-import { colors, typeAccent } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 import { sessionScreenStyles as styles } from "./session.styles";
 
@@ -204,6 +205,18 @@ export default function SessionScreen() {
       cancelled = true;
     };
   }, [curriculumId, weekId, session?.access_token]);
+
+  // When the session reaches the finished phase, invalidate the curriculum
+  // cache so the detail screen and home screen show fresh progress on the
+  // user's next visit (without needing an auto-refresh).
+  useEffect(() => {
+    if (phase !== "finished" || !curriculumId) return;
+    cacheDelPrefix(`curriculum:${curriculumId}`);
+    // Also bust the home screen curricula list so progress bars update.
+    // We don't have the userId here, so wipe all home cache entries that
+    // reference this curriculum — prefix match covers it.
+    cacheDelPrefix(`home:`);
+  }, [phase, curriculumId]);
 
   // 2. When the lesson screen needs content and we don't have it yet,
   //    fetch (or generate via the Explainer) for the active module.
@@ -577,11 +590,6 @@ export default function SessionScreen() {
       ? 1
       : Math.max(moduleProgress, liveProgress);
 
-  const accent = active
-    ? typeAccent[active.content_json.type as keyof typeof typeAccent] ??
-      typeAccent.multiple_choice
-    : typeAccent.multiple_choice;
-
   const goHome = () => router.replace("/");
   const goBack = () =>
     router.canGoBack() ? router.back() : router.replace("/");
@@ -666,14 +674,7 @@ export default function SessionScreen() {
   };
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: accent.gradientFrom,
-        to: accent.gradientTo,
-        angle: 150,
-        height: 280,
-      }}
-    >
+    <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
       <Toolbar
         onBack={goBack}
@@ -681,8 +682,8 @@ export default function SessionScreen() {
         middle={
           <ProgressBar
             pct={shownProgress}
-            color={colors.textOnDark}
-            trackColor="rgba(255,255,255,0.32)"
+            color={colors.brand}
+            trackColor={colors.paperAlt}
             height={6}
           />
         }

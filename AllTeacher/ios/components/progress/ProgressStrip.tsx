@@ -87,6 +87,19 @@ export function ProgressStrip({
         Last active · {formatRelative(detail.last_active_at)}
       </Text>
 
+      {detail.mastered_concepts && detail.mastered_concepts.length > 0 ? (
+        <View style={styles.masteredSection}>
+          <Text style={styles.masteredLabel}>✓ Mastered</Text>
+          <View style={styles.masteredRow}>
+            {detail.mastered_concepts.slice(0, 8).map((concept) => (
+              <View key={concept} style={styles.masteredPill}>
+                <Text style={styles.masteredPillText}>{concept}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View style={styles.actionRow}>
         {onOpenDashboard ? (
           <Pressable

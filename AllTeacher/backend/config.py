@@ -26,6 +26,11 @@ class Config:
 
     REVENUECAT_WEBHOOK_SECRET = os.getenv("REVENUECAT_WEBHOOK_SECRET", "")
 
+    # Third-party media APIs — optional. If not set, the orchestrator
+    # silently skips video_choice generation and image decoration.
+    YOUTUBE_API_KEY  = os.getenv("YOUTUBE_API_KEY", "")
+    UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "")
+
     # Admin dashboard gating. Only requests whose verified Supabase JWT
     # email matches ADMIN_EMAIL get through the @admin_only decorator.
     # Single-account by design — there is one operator (us). Add a
@@ -78,10 +83,12 @@ class Config:
 
     # Tier list rendered to the admin dashboard. Keep in sync with the
     # `subscriptions.tier` CHECK constraint and the iOS paywall.
+    # Tier ladder: free → starter (€3) → pro (€8) → power (€15)
     TIER_PRICES_EUR_CENTS: dict[str, int] = {
-        "free":  0,
-        "pro":   900,
-        "power": 1900,
+        "free":    0,
+        "starter": 300,
+        "pro":     800,
+        "power":   1500,
     }
 
     # Per-tier capacity caps. None = unlimited.
@@ -91,16 +98,17 @@ class Config:
     # Enforcement lives in `orchestrator/_assessment.py::start_curriculum`
     # — raises 402 `tier_curriculum_cap` when exceeded.
     CURRICULUM_CAPS: dict[str, int | None] = {
-        "free":  1,
-        "pro":   3,
-        "power": None,
+        "free":    1,
+        "starter": 2,
+        "pro":     5,
+        "power":   None,
     }
 
     # Minimum tier required to receive Adapter (re-planner) re-runs after
     # exercise submissions. Free users still get scoring + tracker
-    # updates; the Adapter is the "your plan adapts to you" Pro hook.
+    # updates; the Adapter is the "your plan adapts to you" Starter hook.
     # Soft-skipped at the orchestrator level — never fails a submit.
-    ADAPTER_TIER_MIN: str = "pro"
+    ADAPTER_TIER_MIN: str = "starter"
 
     @classmethod
     def is_configured(cls) -> dict:

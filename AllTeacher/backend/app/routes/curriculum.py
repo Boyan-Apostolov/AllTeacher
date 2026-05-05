@@ -379,13 +379,22 @@ def curriculum_progress_route(curriculum_id):
 def replan(curriculum_id):
     """Explicit "re-plan now" trigger. Returns
     {changed, summary_note?, rewritten_weeks?, total_weeks?, added_bonus_weeks?}.
+
+    Optional body: {difficulty_boost?: bool}
+      When true, the Adapter is instructed to raise the difficulty ceiling
+      across all upcoming weeks ("Make it harder" UX).
+
     The submit_exercise auto path runs the same logic at session-complete,
-    fail-soft."""
+    fail-soft.
+    """
+    body = request.get_json(silent=True) or {}
+    difficulty_boost = bool(body.get("difficulty_boost") or False)
     try:
         payload = _orch().run_adapter(
             user_id=g.user_id,
             curriculum_id=curriculum_id,
             tier=getattr(g, "user_tier", "free"),
+            difficulty_boost=difficulty_boost,
         )
     except OrchestratorError as e:
         return _orch_error(e)

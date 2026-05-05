@@ -366,6 +366,110 @@ Out of scope (deliberate — picked up later):
 
 User actions remaining: `cd ios && npm install`; apply `010_multimodal_exercise_types.sql` in Supabase SQL editor; optionally pre-create the `exercise-audio` bucket as Public if the service-role key can't create buckets (the helper tries idempotently on first use).
 
+### Curriculum action buttons — "Add more sessions" + "Make it harder" (2026-05-03)
+
+Two new buttons appear on the curriculum detail screen once a plan is generated, below the ProgressStrip and above the week cards.
+
+**Add more sessions** — generates 5 bonus exercises that target the user's recent weak areas (`focus_weak_areas: true`). No new weeks are created; exercises are inserted with `module_index=null` so the session screen groups them under its bonus phase. After completion a brief success banner appears on the plan screen.
+
+**Make it harder** — replans all upcoming weeks with an elevated difficulty ceiling. Under the hood it calls the existing `/curriculum/<id>/replan` route with `{"difficulty_boost": true}`. The Adapter receives an extra injected instruction telling it to remove scaffolding, use harder vocabulary, and increase pace — without shrinking the plan or skipping topics. Pro+ only (free users see a 402 error in the banner). After completion the week cards refresh automatically.
+
+**Code changes**:
+- `backend/app/agents/adapter.py` — `adapt()` now accepts `difficulty_boost: bool`. When true, a `[DIFFICULTY BOOST REQUESTED]` block is appended to the user message.
+- `backend/app/agents/orchestrator/_tracker.py` — `run_adapter()` + `_run_adapter_if_eligible()` forward `difficulty_boost` to the agent.
+- `backend/app/routes/curriculum.py` — `POST /curriculum/<id>/replan` reads `difficulty_boost` from the request body.
+- `ios/lib/api.ts` — `addMoreSessions()` and `makeHarder()` API helpers.
+- `ios/app/curriculum/[id].tsx` — `addingSessions`, `makingHarder`, `actionBanner` state; `addMoreSessions()` + `makeHarder()` handlers; two-column button row + success banner in JSX.
+- `ios/app/curriculum/[id].styles.ts` — `actionRow`, `actionBtn*`, `actionBanner*` styles.
+
+No new migrations needed. No user action required.
+
+---
+
+### Sign in with Apple (2026-05-03)
+
+Apple Sign In added to the login and signup screens. Users can authenticate with a single tap using their Apple ID — no email/password required. Supabase handles the token exchange server-side.
+
+**How it works**: the iOS sheet is shown via `expo-apple-authentication`. Apple returns an `identityToken` (a short-lived JWT signed by Apple's keys). The app calls `supabase.auth.signInWithIdToken({ provider: 'apple', token })` — Supabase validates the token against Apple's JWKS endpoint and either creates a new `auth.users` row or signs in the existing one. The `handle_new_user` trigger fires on first sign-in and seeds `public.users` + `public.subscriptions` as normal.
+
+**Code changes**:
+- `ios/package.json` — added `expo-apple-authentication@~6.4.0`
+- `ios/app.json` — `ios.usesAppleSignIn: true`, `expo-apple-authentication` added to `plugins`
+- `ios/lib/auth.tsx` — `signInWithApple()` added to `AuthContextValue` and `AuthProvider`. Lazy `import()` of the module so Android builds are unaffected. `ERR_CANCELED` is swallowed (user dismissed the sheet).
+- `ios/app/(auth)/login.tsx` — Apple "Sign in with Apple" button (black style) after the email/password CTA, separated by an "— or —" divider. Rendered only when `AppleAuthentication.isAvailableAsync()` returns true (real devices and Simulator with a signed-in Apple ID).
+- `ios/app/(auth)/signup.tsx` — Apple "Continue with Apple" button placed *above* the email form (per Apple's HIG: the native option should be the most prominent on signup screens).
+
+**User action remaining (Supabase + Apple Developer Console — manual steps)**:
+
+See the "Enable Sign in with Apple" section below (§ 2a).
+
+---
+
+## 2a. Enable Sign in with Apple
+
+These are one-time manual steps. Do them before running the app on a real device.
+
+### Apple Developer Console
+
+1. Go to <https://developer.apple.com> → **Certificates, Identifiers & Profiles**.
+2. **Register an App ID** (if not already done):
+   - Identifiers → `+` → App IDs → App
+   - Bundle ID: `com.allteacher.app`
+   - Scroll to **Capabilities** → tick **Sign In with Apple** → Continue → Register.
+3. **Create a Services ID** (used by Supabase as the OAuth client):
+   - Identifiers → `+` → Services IDs
+   - Description: `AllTeacher`
+   - Identifier: `com.allteacher.app.siwa` (or any reverse-DNS string)
+   - Continue → Register.
+   - Click the new Services ID → tick **Sign In with Apple** → Configure:
+     - Primary App ID: `com.allteacher.app`
+     - Domains and Subdomains: `<your-project-ref>.supabase.co`
+     - Return URLs: `https://<your-project-ref>.supabase.co/auth/v1/callback`
+   - Save → Continue → Register.
+4. **Create a Key**:
+   - Keys → `+`
+   - Name: `AllTeacher SIWA`
+   - Tick **Sign In with Apple** → Configure → Primary App ID: `com.allteacher.app`
+   - Continue → Register → **Download** the `.p8` file (you can only download it once — save it safely).
+   - Note the **Key ID** shown on the confirmation page.
+5. Note your **Team ID** — it appears top-right next to your name on the developer portal (10-character string, e.g. `AB12CD34EF`).
+
+### Supabase Dashboard
+
+1. Open your Supabase project → **Authentication → Providers → Apple**.
+2. Toggle **Enable Apple provider** on.
+3. Fill in:
+   - **Service ID (for OAuth)**: the Services ID from step 3 above (e.g. `com.allteacher.app.siwa`)
+   - **Apple Team ID**: your 10-character Team ID from step 5
+   - **Key ID**: the Key ID from step 4
+   - **Private Key**: open the `.p8` file in a text editor and paste the entire contents (including the `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----` lines)
+4. **Save**.
+5. Copy the **Callback URL** shown by Supabase (format: `https://<ref>.supabase.co/auth/v1/callback`) — confirm it matches what you entered in the Apple Developer Services ID.
+
+### Local dev (Simulator)
+
+`expo-apple-authentication` works in the iOS Simulator when the Simulator has an Apple ID signed in:
+- Simulator → **Settings → Sign in to your iPhone** → use your Apple ID.
+
+The Apple button is hidden automatically on simulators without a signed-in Apple ID and on all Android/web builds (guarded by `isAvailableAsync()`).
+
+### Install the package
+
+```bash
+cd ios
+npm install
+```
+
+Then re-run:
+
+```bash
+npx expo run:ios
+```
+
+(A bare `npx expo start --ios` won't pick up the new native module — you need a full native build after adding `expo-apple-authentication`.)
+
+---
+
 ### Tier enforcement — manual grants, no payments yet (2026-04-29)
 
 User wanted the three-tier hierarchy (free / pro / power) wired up end-to-end without dealing with Apple / RevenueCat. Operator manually promotes users from the admin dashboard for now; RevenueCat IAP becomes step 7b later.
@@ -462,6 +566,7 @@ Next, in roughly MVP order:
 6. ~~Streaming responses end-to-end (SSE) for the Evaluator's longer feedback.~~ ✅
 7. ~~Tier enforcement — manual admin grants, no payments yet.~~ ✅
 7b. RevenueCat → Apple IAP webhook + receipt validation. ← deferred until the user is ready to deal with App Store Connect.
+7c. ~~Sign in with Apple.~~ ✅
 8. ~~Multimodal — listening exercises (TTS) + visual lessons (Mermaid).~~ ✅
 9. TestFlight submission.
 
@@ -540,3 +645,52 @@ QA + docs:
 Tick each box as you finish.
 
 Tick each box (`[x]`) as you finish.
+
+---
+
+## Recent changes
+
+### Neo-brutalist design overhaul (2026-05-03)
+
+Complete visual language swap across the entire iOS app — from dark-purple gradient-heavy UI to a warm neo-brutalist aesthetic (cream paper, coral brand, chunky ink borders, hard offset shadows, no soft blur shadows, no gradients anywhere).
+
+#### Design tokens (`ios/lib/theme.ts`)
+- `colors.paper` `#FBF4E6` (cream bg), `colors.card` `#FFFFFF`, `colors.ink` `#1A1410` (near-black)
+- `colors.brand` `#FF6B3D` (coral), `colors.mc` `#7C5CFF` (purple), `colors.flash` `#0BC5C2` (teal), `colors.short` `#FFB020` (gold)
+- `colors.ok` / `colors.warn` replace old `success` / `danger` / `warning` trio
+- `shadow.card` / `shadow.raised` use `shadowRadius: 0` + integer offsets (hard shadows, not blurs)
+- Legacy aliases kept so unredesigned components don't break
+
+#### New UI primitives
+- `Mascot.tsx` — owl SVG (5 moods: happy/thinking/cheer/sleepy/wink), lazy `react-native-svg` require, emoji fallback
+- `Sticker.tsx` — angled brutalist label tag: ink border + offset shadow, `rotate` + `uppercase` props
+- `Spark.tsx` — 8-pointed starburst SVG, lazy require
+- `BrutalCard.tsx` — white card with configurable ink border + hard shadow
+
+#### Screens + components redesigned
+| File | Change |
+|------|--------|
+| `components/ui/PrimaryCta` | Solid button: `height 56`, `borderWidth 2.5`, ink border, hard shadow; `bg`/`color` props replace gradient `from`/`to` |
+| `components/ui/Field` | White card with ink border + shadow; label floats inside |
+| `components/ui/Toolbar.styles` | 32×32 white square nav buttons with ink border |
+| `components/ui/ScreenContainer.styles` | `backgroundColor` → `colors.paper` |
+| `app/(auth)/login.tsx` | Mascot + "hey 👋" Sticker, "Welcome back." heading, brutalist fields |
+| `app/(auth)/signup.tsx` | Step Stickers, weekly-email checkbox row, `PrimaryCta` "Continue →" |
+| `app/index.tsx` | Streak hero card (coral), Spark decoration, 7-day dot grid, Today card with progress bar, dashed "+ New curriculum" row |
+| `app/curriculum/new.tsx` | "step 2 of 3" Sticker, 6 suggestion Stickers, goal textarea + char count |
+| `app/curriculum/[id].tsx` | Removed `headerColors` gradient; ScreenContainer called plain |
+| `components/curriculum/WeekCard` | White card, ink border, offset shadow; `weekColor()` cycles brand/flash/mc/short |
+| `components/curriculum/QuestionView` | Progress bar, Mascot speech bubble, A/B/C/D option cards |
+| `components/session/ExerciseHeader` | Progress bar track + colored fill + `Sticker` type label |
+| `components/session/LessonView` | Flash Sticker header, white card, pitfall box (brandSoft), "Start exercises →" in teal |
+| `components/session/MultipleChoice` | White option cards, ink border + offset shadow, square option dots |
+| `components/session/Flashcard` | Flip card: front = flash solid, back = white card; no Gradient; Hard/Medium/Easy rating row |
+| `components/session/ShortAnswer` | Ink-bordered input, `PrimaryCta` in gold |
+| `components/session/ListenChoice` | Flash play button with ink border; teal transcript card |
+| `components/session/FeedbackCard` | Verdict tones mapped to ok/warn/flash/short palette |
+| `components/session/FinishedView` | `scoreNumber` in coral, ink-bordered chart bars, brutalist recap + bonus cards |
+| `app/curriculum/session.tsx` | Removed gradient from ScreenContainer; ProgressBar uses `colors.brand` |
+| `app/admin.tsx` | Brutalist KPI tiles, ink borders on cards/rows/modal; tier pills (free=paperAlt, pro=brand, power=mc) |
+
+#### No-action needed
+All changes are pure style/layout. No API changes, no database migrations, no new npm packages. Run `npx expo start` as usual.

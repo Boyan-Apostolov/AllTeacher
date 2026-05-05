@@ -1,12 +1,13 @@
 /**
- * Short-answer exercise body. Multiline text input + submit.
+ * Short-answer exercise body — neo-brutalist redesign.
+ * Ink-bordered prompt + text input + solid brand CTA.
  */
 import { useState } from "react";
 import { Text, TextInput, View } from "react-native";
 
 import type { ExerciseContent, ExerciseRow } from "@/lib/api";
 import { PrimaryCta } from "@/components/ui";
-import { colors, spacing, typeAccent } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 import { textResponseStyles as styles } from "./TextResponse.styles";
 
@@ -25,7 +26,6 @@ export function ShortAnswer({
     submission && "text" in submission ? submission.text : "";
   const [text, setText] = useState(initial);
   const [focused, setFocused] = useState(false);
-  const accent = typeAccent.short_answer;
 
   const trimmed = text.trim();
   const submitDisabled = disabled || trimmed.length === 0;
@@ -44,7 +44,7 @@ export function ShortAnswer({
         value={text}
         onChangeText={setText}
         placeholder="Type your answer…"
-        placeholderTextColor={colors.textFaint}
+        placeholderTextColor={colors.ink4}
         editable={!disabled}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
@@ -56,8 +56,8 @@ export function ShortAnswer({
         label="Submit answer →"
         onPress={() => onSubmit(trimmed)}
         disabled={submitDisabled}
-        from={accent.gradientFrom}
-        to={accent.gradientTo}
+        bg={colors.short}
+        color={colors.ink}
       />
     </View>
   );

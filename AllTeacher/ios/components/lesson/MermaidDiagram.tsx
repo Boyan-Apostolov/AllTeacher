@@ -99,40 +99,39 @@ function buildHtml(source: string): string {
         }
       } catch (e) { /* noop */ }
     }
-    function showError(msg) {
-      var el = document.getElementById('err');
-      el.textContent = msg;
-      el.style.display = 'block';
-      postHeight();
+    function showError() {
+      // Hide the diagram container and post a minimal height so the
+      // lesson card collapses cleanly — no red bomb or parse errors shown.
+      document.getElementById('diagram').style.display = 'none';
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'mermaid:error' }));
+      }
     }
     try {
       mermaid.initialize({
         startOnLoad: false,
-        securityLevel: 'strict',
+        securityLevel: 'loose',
         theme: 'default',
+        suppressErrorRendering: true,
         flowchart: { useMaxWidth: true },
         themeVariables: {
-          // Match the app's palette so the diagram doesn't visually
-          // pop out of the lesson card.
-          primaryColor: '#efe9ff',
-          primaryTextColor: '#1d1640',
-          primaryBorderColor: '#7c5cff',
-          lineColor: '#5f3dff',
+          primaryColor: '#FBF4E6',
+          primaryTextColor: '#1A1410',
+          primaryBorderColor: '#1A1410',
+          lineColor: '#FF6B3D',
           fontSize: '14px'
         }
       });
       var src = ${'`' + escaped + '`'};
       mermaid.render('rendered', src).then(function (out) {
         document.getElementById('diagram').innerHTML = out.svg;
-        // Mermaid renders synchronously, but the SVG layout settles a
-        // tick later. Two posts cover the common cases.
         postHeight();
         setTimeout(postHeight, 60);
       }).catch(function (e) {
-        showError('Mermaid: ' + (e && e.message ? e.message : 'render failed'));
+        showError();
       });
     } catch (e) {
-      showError('Mermaid: ' + (e && e.message ? e.message : 'init failed'));
+      showError();
     }
   })();
 </script>
@@ -140,21 +139,48 @@ function buildHtml(source: string): string {
 </html>`;
 }
 
-export function MermaidDiagram({ source }: { source: string }) {
+export function MermaidDiagram({
+  source,
+  onError,
+}: {
+  source: string;
+  /** Called when Mermaid fails to parse/render — lets the parent hide
+   *  its section label + wrapper so no empty box is left behind. */
+  onError?: () => void;
+}) {
   const html = useMemo(() => buildHtml(source), [source]);
-  // Start with a sensible default height; the WebView will post its
-  // measured height once the SVG has rendered and we'll grow into it.
-  const [height, setHeight] = useState(160);
+  // Start at 0 (invisible) and grow once the SVG is measured.
+  // This prevents the "empty box flash" — nothing shows until Mermaid
+  // confirms a real height via postMessage.
+  const [height, setHeight] = useState(0);
 
   if (!_WebView) {
-    // Don't crash the lesson screen if the dep isn't installed yet.
-    // The lesson still has its text content; this just falls back to
-    // a small notice. Production builds always have the dep.
+    return null;
+  }
+
+  if (height === 0) {
+    // Render the WebView off-screen so it can load and measure itself,
+    // but keep a transparent 0-height placeholder so no space is taken.
     return (
-      <View style={styles.fallback}>
-        <Text style={styles.fallbackText}>
-          Diagram needs the WebView dependency — run `npm install` in /ios.
-        </Text>
+      <View style={{ height: 0, overflow: "hidden" }}>
+        <_WebView
+          originWhitelist={["*"]}
+          source={{ html }}
+          scalesPageToFit={false}
+          scrollEnabled={false}
+          style={{ width: "100%", height: 200 }}
+          onMessage={(event: any) => {
+            try {
+              const data = JSON.parse(event?.nativeEvent?.data ?? "{}");
+              if (data?.type === "mermaid:height" && typeof data.height === "number") {
+                const next = Math.max(80, Math.min(600, Math.ceil(data.height)));
+                setHeight(next);
+              } else if (data?.type === "mermaid:error") {
+                onError?.();
+              }
+            } catch { /* ignore */ }
+          }}
+        />
       </View>
     );
   }
@@ -168,24 +194,19 @@ export function MermaidDiagram({ source }: { source: string }) {
         scrollEnabled={false}
         showsHorizontalScrollIndicator={false}
         showsVerticalScrollIndicator={false}
-        // Background transparent so the WebView blends into the
-        // surrounding lesson card (Mermaid's body bg is also
-        // transparent — see buildHtml).
         style={styles.webview}
-        // iOS / Android both honour these:
         opaque={false}
         backgroundColor={"transparent"}
-        // Resize to whatever the rendered SVG measures.
         onMessage={(event: any) => {
           try {
             const data = JSON.parse(event?.nativeEvent?.data ?? "{}");
             if (data?.type === "mermaid:height" && typeof data.height === "number") {
               const next = Math.max(80, Math.min(600, Math.ceil(data.height)));
               setHeight(next);
+            } else if (data?.type === "mermaid:error") {
+              onError?.();
             }
-          } catch {
-            /* ignore — non-JSON messages from random WebView noise */
-          }
+          } catch { /* ignore */ }
         }}
       />
     </View>

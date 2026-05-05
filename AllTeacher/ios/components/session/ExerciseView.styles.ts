@@ -1,15 +1,20 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const exerciseViewStyles = StyleSheet.create({
   emptyCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
     padding: spacing.lg,
-    borderRadius: radii.xl,
-    ...shadow.card,
+    borderRadius: 16,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
-  emptyText: { fontSize: 15, color: colors.text, lineHeight: 22 },
+  emptyText: { fontSize: 15, color: colors.ink2, lineHeight: 22 },
 
   scoring: {
     alignItems: "center",
@@ -18,7 +23,7 @@ export const exerciseViewStyles = StyleSheet.create({
   },
   scoringText: {
     fontSize: 13,
-    color: colors.textOnDark,
-    fontWeight: "600",
+    color: colors.ink3,
+    fontWeight: "700",
   },
 });

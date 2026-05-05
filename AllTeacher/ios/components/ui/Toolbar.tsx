@@ -1,11 +1,6 @@
 /**
- * Standard top toolbar: pill-shaped Back button on the left, screen title
- * (or arbitrary middle slot) in the middle, Home button on the right.
- *
- * Both action buttons are optional — pass undefined and the slot stays
- * empty (kept for layout balance via a transparent placeholder). Pass
- * `middle` to replace the centered title with custom content (e.g. a
- * progress bar during an exercise session).
+ * Standard top toolbar: icon Back button on the left, screen title
+ * (or arbitrary middle slot) in the centre, icon Home button on the right.
  */
 import type { ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
@@ -18,42 +13,42 @@ export function Toolbar({
   onBack,
   onHome,
   disabled,
-  backLabel = "← Back",
-  homeLabel = "Home",
 }: {
   title?: string;
   middle?: ReactNode;
   onBack?: () => void;
   onHome?: () => void;
   disabled?: boolean;
-  backLabel?: string;
-  homeLabel?: string;
 }) {
   return (
     <View style={styles.toolbar}>
       {onBack ? (
         <Pressable
-          style={styles.btn}
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
           onPress={onBack}
           disabled={disabled}
+          accessibilityLabel="Go back"
         >
-          <Text style={styles.btnText}>{backLabel}</Text>
+          <Text style={styles.btnIcon}>←</Text>
         </Pressable>
       ) : (
         <View style={styles.btnSpacer} />
       )}
+
       {middle !== undefined ? (
         <View style={styles.middle}>{middle}</View>
       ) : (
-        <Text style={styles.title}>{title ?? ""}</Text>
+        <Text style={styles.title} numberOfLines={1}>{title ?? ""}</Text>
       )}
+
       {onHome ? (
         <Pressable
-          style={styles.btn}
+          style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
           onPress={onHome}
           disabled={disabled}
+          accessibilityLabel="Go home"
         >
-          <Text style={styles.btnText}>{homeLabel}</Text>
+          <Text style={styles.btnIcon}>⌂</Text>
         </Pressable>
       ) : (
         <View style={styles.btnSpacer} />

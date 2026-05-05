@@ -1,8 +1,6 @@
 /**
- * Create-curriculum screen — collects the user's goal + native language,
- * then kicks off the assessor by calling api.createCurriculum. Mostly
- * presentational; relies on shared UI primitives (Toolbar, PrimaryCta,
- * MessageBox, ScreenContainer) and the LanguagePicker.
+ * New Curriculum screen — neo-brutalist redesign.
+ * Goal text area + suggestion stickers + language picker.
  */
 import { useMemo, useState } from "react";
 import {
@@ -16,22 +14,18 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { LanguagePicker } from "@/components/curriculum";
-import {
-  MessageBox,
-  PrimaryCta,
-  ScreenContainer,
-  Toolbar,
-} from "@/components/ui";
+import { MessageBox, PrimaryCta, Toolbar } from "@/components/ui";
+import { Sticker } from "@/components/ui/Sticker";
 import { colors } from "@/lib/theme";
 
 import { newCurriculumStyles as styles } from "./new.styles";
 
-/** Best-effort device locale → 2-letter BCP-47 language code. */
 function detectLanguage(): string {
   try {
     const loc = Intl.DateTimeFormat().resolvedOptions().locale;
@@ -39,19 +33,19 @@ function detectLanguage(): string {
   } catch {}
   if (Platform.OS === "ios") {
     const s = NativeModules.SettingsManager?.settings;
-    const raw: string | undefined =
-      s?.AppleLocale || s?.AppleLanguages?.[0];
+    const raw: string | undefined = s?.AppleLocale || s?.AppleLanguages?.[0];
     if (raw) return raw.split(/[-_]/)[0].toLowerCase();
   }
   return "en";
 }
 
-const SUGGESTIONS = [
-  "Conversational Italian for a summer trip",
-  "Python — basics to building a small web app",
-  "Jazz piano improvisation",
-  "GMAT quant in 6 weeks",
-  "Watercolor painting for absolute beginners",
+const SUGGESTIONS: [string, string, string, number][] = [
+  ["🇪🇸 Spanish basics", colors.brand, "#fff", -2],
+  ["🎸 Guitar chords", colors.flash, "#fff", 1],
+  ["📐 Calculus prep", colors.mc, "#fff", -1],
+  ["✍️ Better writing", "#FFE066", colors.ink, 2],
+  ["🧠 Spaced repetition", colors.paperAlt, colors.ink, -1],
+  ["🍳 Knife skills", colors.short, colors.ink, 1],
 ];
 
 export default function NewCurriculumScreen() {
@@ -66,34 +60,20 @@ export default function NewCurriculumScreen() {
 
   const start = async () => {
     const token = session?.access_token;
-    if (!token) {
-      setError("Not signed in");
-      return;
-    }
+    if (!token) { setError("Not signed in"); return; }
     const trimmed = goal.trim();
-    if (!trimmed) {
-      setError("Tell us what you want to learn first.");
-      return;
-    }
+    if (!trimmed) { setError("Tell us what you want to learn first."); return; }
     const lang = (nativeLanguage || "en").trim().toLowerCase();
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.createCurriculum(token, {
-        goal: trimmed,
-        native_language: lang,
-      });
+      const res = await api.createCurriculum(token, { goal: trimmed, native_language: lang });
       router.replace(`/curriculum/${res.id}`);
     } catch (e) {
-      // Tier-cap rejections (402 tier_curriculum_cap) are user-actionable,
-      // not bugs — surface them as an Alert with the upgrade message
-      // straight from the backend instead of dropping a "402" string into
-      // the generic error MessageBox.
       if (e instanceof ApiError && e.body?.error === "tier_curriculum_cap") {
         Alert.alert(
           "Plan limit reached",
-          e.body.detail ||
-            "Your plan supports a limited number of active curricula. Archive an existing track or upgrade to start a new one.",
+          e.body.detail || "Your plan supports a limited number of active curricula. Archive an existing track or upgrade to start a new one.",
           [{ text: "OK" }],
         );
       } else {
@@ -104,102 +84,89 @@ export default function NewCurriculumScreen() {
     }
   };
 
-  const goBack = () =>
-    router.canGoBack() ? router.back() : router.replace("/");
-  const goHome = () => router.replace("/");
+  const goBack = () => router.canGoBack() ? router.back() : router.replace("/");
 
   return (
-    <ScreenContainer
-      gradient={{
-        from: colors.brand,
-        via: colors.accent,
-        to: "#ff9966",
-        angle: 155,
-        height: 280,
-      }}
-    >
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }}>
       <Stack.Screen options={{ headerShown: false }} />
-      <Toolbar
-        title="New curriculum"
-        onBack={goBack}
-        onHome={goHome}
-        disabled={submitting}
-      />
+      <Toolbar title="New curriculum" onBack={goBack} disabled={submitting} />
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.eyebrow}>Step 1 of 2 · The goal</Text>
-          <Text style={styles.title}>What do you want{"\n"}to learn? 🚀</Text>
-          <Text style={styles.subtitle}>
-            Write a topic, skill, or goal — in any language. We'll ask a few
-            quick questions and build your curriculum.
-          </Text>
+          {/* Heading */}
+          <View style={{ marginTop: 12 }}>
+            <Sticker bg={colors.ink} color="#fff" rotate={-2}>step 2 of 3</Sticker>
+            <Text style={[styles.title, { marginTop: 16 }]}>
+              What do you{"\n"}
+              <Text style={styles.titleAccent}>want to learn?</Text>
+            </Text>
+            <Text style={[styles.subtitle, { marginTop: 12 }]}>
+              Anything goes. We'll figure out the path.
+            </Text>
+          </View>
 
+          {/* Goal text area */}
           <View style={styles.card}>
             <Text style={styles.fieldLabel}>Your goal</Text>
             <TextInput
               style={styles.textarea}
-              placeholder="e.g. Conversational Italian for a summer trip"
-              placeholderTextColor={colors.textFaint}
+              placeholder="Conversational Spanish for a 2-week trip to Mexico City"
+              placeholderTextColor={colors.ink4}
               multiline
               autoFocus
               value={goal}
               onChangeText={setGoal}
               editable={!submitting}
+              maxLength={200}
             />
-            <Text style={styles.suggestionsLabel}>Need inspiration?</Text>
+            <Text style={styles.charCount}>{goal.length} / 200</Text>
+          </View>
+
+          {/* Suggestions */}
+          <View>
+            <Text style={styles.suggestionsLabel}>Or pick one</Text>
             <View style={styles.suggestionsWrap}>
-              {SUGGESTIONS.map((s) => (
-                <Pressable
-                  key={s}
-                  style={styles.suggestionChip}
-                  onPress={() => setGoal(s)}
-                  disabled={submitting}
-                >
-                  <Text style={styles.suggestionText}>{s}</Text>
+              {SUGGESTIONS.map(([txt, bg, fg, rot]) => (
+                <Pressable key={txt} onPress={() => setGoal(txt.replace(/^[\p{Emoji_Presentation}\s]+/u, "").trim())} disabled={submitting}>
+                  <Sticker bg={bg} color={fg} rotate={rot} uppercase={false} style={{ paddingVertical: 7, paddingHorizontal: 12 }} textStyle={{ fontSize: 12 }}>
+                    {txt}
+                  </Sticker>
                 </Pressable>
               ))}
             </View>
           </View>
 
+          {/* Language */}
           <View style={styles.card}>
             <Text style={styles.fieldLabel}>Your native language</Text>
-            <Text style={styles.fieldHint}>
-              Questions and feedback will arrive in this language.
-            </Text>
+            <Text style={styles.fieldHint}>Questions and feedback will arrive in this language.</Text>
             <LanguagePicker
               value={nativeLanguage}
               onChange={setNativeLanguage}
               disabled={submitting}
-              detectedHint={`Detected from your device: ${defaultLang}`}
+              detectedHint={`Detected: ${defaultLang}`}
             />
           </View>
 
           {error ? <MessageBox variant="error" message={error} /> : null}
 
           <PrimaryCta
-            label="Start assessment →"
+            label="Start the quiz →"
             onPress={start}
             loading={submitting}
             disabled={submitting}
+            bg={colors.brand}
           />
 
-          <Pressable
-            style={styles.cancel}
-            onPress={goBack}
-            disabled={submitting}
-          >
+          <Pressable style={styles.cancel} onPress={goBack} disabled={submitting}>
             <Text style={styles.cancelText}>Cancel</Text>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-    </ScreenContainer>
+    </SafeAreaView>
   );
 }

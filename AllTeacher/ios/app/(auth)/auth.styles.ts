@@ -1,56 +1,102 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing, type } from "@/lib/theme";
+import { colors } from "@/lib/theme";
 
 /**
- * Shared chrome for the login + signup screens. Both render the same
- * hero block and a card with input fields, error message, and primary CTA.
+ * Shared chrome for login + signup screens — neo-brutalist warm style.
  */
 export const authStyles = StyleSheet.create({
   flex: { flex: 1 },
 
-  hero: {
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.xxl,
+  scroll: { flexGrow: 1 },
+
+  container: {
+    flex: 1,
+    paddingHorizontal: 28,
+    paddingBottom: 40,
   },
-  eyebrow: {
-    color: "rgba(255,255,255,0.85)",
-    fontSize: 12,
-    fontWeight: "800",
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    marginBottom: spacing.sm,
+
+  mascotRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 12,
+    marginTop: 8,
   },
+
   heroTitle: {
-    fontSize: 40,
+    fontSize: 44,
     fontWeight: "900",
-    color: colors.textOnDark,
-    letterSpacing: -0.8,
-    lineHeight: 44,
+    color: colors.ink,
+    letterSpacing: -1.5,
+    lineHeight: 42,
+    marginTop: 20,
   },
+
+  heroTitleAccent: { color: colors.brand },
+
   heroSub: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.9)",
-    marginTop: spacing.md,
+    fontSize: 15,
+    color: colors.ink3,
+    marginTop: 16,
+    fontWeight: "500",
   },
 
-  card: {
-    marginHorizontal: spacing.lg,
-    marginTop: "auto",
-    marginBottom: spacing.lg,
-    padding: spacing.xl,
-    backgroundColor: colors.surface,
-    borderRadius: radii.xl,
-    ...shadow.raised,
+  fields: { gap: 12, marginTop: 32 },
+
+  checkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    backgroundColor: colors.brandSoft,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    marginTop: 4,
   },
-  cardSub: { ...type.bodyMuted, marginTop: spacing.xs },
-  fields: { gap: spacing.md, marginTop: spacing.lg },
 
-  errorWrap: { marginTop: spacing.md },
-  ctaWrap: { marginTop: spacing.lg },
+  checkBox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    backgroundColor: colors.brand,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-  footerLink: { marginTop: spacing.lg, alignSelf: "center" },
-  footer: { fontSize: 14, color: colors.textMuted },
-  footerAccent: { color: colors.brand, fontWeight: "700" },
+  checkText: {
+    fontSize: 13,
+    color: colors.ink,
+    fontWeight: "600",
+    flex: 1,
+  },
+
+  stepsRow: {
+    flexDirection: "row",
+    gap: 6,
+    alignItems: "center",
+  },
+
+  errorWrap: { marginTop: 16 },
+  ctaWrap: { marginTop: 20 },
+
+  footerLink: { marginTop: 18, alignSelf: "center" },
+  footer: { fontSize: 14, color: colors.ink3, fontWeight: "500" },
+  footerAccent: { color: colors.brand, fontWeight: "800" },
+
+  termsText: {
+    fontSize: 12,
+    color: colors.ink3,
+    fontWeight: "500",
+    textAlign: "center",
+    marginTop: 14,
+  },
+  termsLink: { color: colors.ink, fontWeight: "700" },
+
+  // Legacy compat for card, hero etc. (no longer used but kept to avoid TS errors)
+  hero: {},
+  eyebrow: {},
+  card: {},
+  cardSub: {},
 });

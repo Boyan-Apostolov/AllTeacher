@@ -11,13 +11,13 @@ import { loadingBlockStyles as styles } from "./LoadingBlock.styles";
 
 export function LoadingBlock({
   label,
-  light = true,
+  light = false,
 }: {
   label?: string;
-  /** Use white text/spinner on dark backgrounds (default). Pass false on light cards. */
+  /** Use brand-colored spinner on light backgrounds (default). Pass true for dark backgrounds. */
   light?: boolean;
 }) {
-  const tint = light ? colors.textOnDark : colors.brand;
+  const tint = light ? "#ffffff" : colors.brand;
   return (
     <View style={styles.center}>
       <ActivityIndicator color={tint} />

@@ -45,6 +45,7 @@ from app.services import usage_meter
 
 class EvaluatorInput(TypedDict, total=False):
     native_language: str
+    native_language_name: str           # full name, e.g. "Bulgarian" for "bg"
     target_language: str | None
     domain: str
     level: str
@@ -63,13 +64,23 @@ class EvaluatorInput(TypedDict, total=False):
 # --- prompt ---
 
 SYSTEM_PROMPT = """\
+OUTPUT LANGUAGE: Write every user-facing field in the language given by
+`native_language` / `native_language_name`. The exercise content may be
+in a different language — ignore that. Do NOT fall back to English.
+
 You are AllTeacher's Evaluator. Score one exercise submission.
 
-LANGUAGE RULE — read carefully. EVERY user-facing text field — `feedback`, `gap`, every entry in `weak_areas`, every entry in `strengths`, and `next_focus` — MUST be written in `native_language`, in its native script. ALL of them. No exceptions. The exercise content itself may be in a different language (the target_language or English); ignore that. The user reads in `native_language`, full stop. `verdict` is the only field that stays a lowercase English machine identifier.
+LANGUAGE RULE — this is the most important constraint. EVERY user-facing text field — `feedback`, `gap`, every entry in `weak_areas`, every entry in `strengths`, and `next_focus` — MUST be written in `native_language_name` (`native_language` BCP-47), in its native script. ALL of them. No exceptions, regardless of what language the exercise, question, or correct answer is written in.
 
-Mixing languages inside a single response — even one tag in a different language — is a bug. If you wrote `feedback` in English while the input said native_language is Hindi, you broke the rule. If you wrote one weak_areas tag in Spanish while another is in Hindi in the same response, you broke the rule. Re-read your output before returning and confirm every text field is in the requested native_language script.
+Before writing a single word of feedback: look at `native_language_name`. If it says "English", write in English. If it says "Hindi", write in Hindi. If it says "Bulgarian", write in Bulgarian. The exercise content is in the target language — ignore its language entirely when writing your feedback.
 
-CANONICAL TAGS — if `existing_weak_areas` or `existing_strengths` are provided, REUSE them verbatim (exact same string, same script) when a tag in your output would name the same theme. Do not coin near-variants like "time management" vs "time management strategies" vs "gestión del tiempo" — pick the existing one. Only introduce a new tag when the theme is genuinely new.
+Mixing languages inside a single response is a critical bug. `feedback` in English when native_language_name is "Hindi" is wrong. One `weak_areas` tag in a different language than the others is wrong. Re-read every text field before returning and confirm all of them are in `native_language_name`.
+
+`verdict` is the only field that stays a lowercase English machine identifier ("correct", "incorrect", "partial", "reviewed").
+
+TAG FORMAT — `weak_areas` and `strengths` entries are short human-readable phrases (1–3 words) in natural language. NEVER use underscores, hyphens-as-separators, or snake_case. Write "goal setting", NOT "goal_setting". Write "mindfulness techniques", NOT "mindfulness_techniques". These are displayed directly to the user.
+
+CANONICAL TAGS — if `existing_weak_areas` or `existing_strengths` are provided, REUSE them verbatim (exact same string, same script) when a tag in your output would name the same theme. Do not coin near-variants like "time management" vs "time management strategies" vs "gestión del tiempo" — pick the existing one. Only introduce a new tag when the theme is genuinely new. IMPORTANT: only reuse an existing tag if it is already written in `native_language` — if an existing tag is in a different language, ignore it and write a fresh tag in `native_language` instead.
 
 Scoring by type:
 - multiple_choice: submission.choice_index == exercise.correct_index → score=1.0 verdict="correct"; else 0.0 "incorrect". Briefly explain why in feedback.
@@ -117,6 +128,38 @@ RESPONSE_SCHEMA = {
 }
 
 
+# --- tag sanitizer ---
+
+def _sanitize_tags(result: dict[str, Any]) -> dict[str, Any]:
+    """Post-process Evaluator output to fix common model slip-ups in tags.
+
+    1. Replace underscores with spaces (model sometimes emits snake_case
+       identifiers like "mindfulness_techniques" instead of the human-
+       readable phrase "mindfulness techniques").
+    2. Strip leading/trailing whitespace and collapse internal runs.
+    3. Drop empty strings after cleaning.
+
+    Applied to both `weak_areas` and `strengths`. Does not touch any
+    other field — `feedback`, `gap`, `next_focus` are natural prose and
+    intentional underscores there (unlikely but possible) should survive.
+    """
+    for field in ("weak_areas", "strengths"):
+        raw = result.get(field)
+        if not isinstance(raw, list):
+            continue
+        cleaned = []
+        for tag in raw:
+            if not isinstance(tag, str):
+                continue
+            # Replace underscores with spaces, collapse whitespace
+            fixed = tag.replace("_", " ").strip()
+            fixed = " ".join(fixed.split())
+            if fixed:
+                cleaned.append(fixed)
+        result[field] = cleaned
+    return result
+
+
 # --- client ---
 
 def _client() -> OpenAI:
@@ -155,7 +198,7 @@ def evaluate(payload: EvaluatorInput) -> dict[str, Any]:
     )
 
     raw = completion.choices[0].message.content or "{}"
-    return json.loads(raw)
+    return _sanitize_tags(json.loads(raw))
 
 
 # --- streaming variant ---
@@ -234,4 +277,4 @@ def evaluate_stream(payload: EvaluatorInput) -> Iterator[dict[str, Any]]:
         parsed = getattr(msg, "parsed", None)
         if parsed is None:
             parsed = json.loads(msg.content or "{}")
-        yield {"final": parsed, "usage": final.usage}
+        yield {"final": _sanitize_tags(parsed), "usage": final.usage}

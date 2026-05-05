@@ -165,16 +165,36 @@ def _client() -> OpenAI:
     return OpenAI(api_key=Config.OPENAI_API_KEY)
 
 
-def adapt(payload: AdapterInput) -> dict[str, Any]:
+def adapt(payload: AdapterInput, *, difficulty_boost: bool = False) -> dict[str, Any]:
     """Re-plan upcoming weeks. Returns the parsed Adapter response — see
-    module docstring for the shape."""
+    module docstring for the shape.
+
+    When `difficulty_boost` is True (user tapped "Make it harder"), an
+    extra instruction is injected into the user message asking the model to
+    raise the difficulty ceiling — harder vocabulary, more complex sentences
+    or problems, longer exercises — without skipping topics or shrinking the
+    plan.
+    """
     client = _client()
+
+    user_content = json.dumps(payload, ensure_ascii=False)
+    if difficulty_boost:
+        user_content += (
+            "\n\n[DIFFICULTY BOOST REQUESTED] The user has explicitly asked to make "
+            "the remaining curriculum harder. Raise the difficulty level across ALL "
+            "upcoming weeks: use more advanced vocabulary, longer or more complex "
+            "exercises, reduce scaffolding and hints, and increase the pace where "
+            "appropriate. Do NOT skip topics or shrink the number of weeks — the arc "
+            "must still reach the goal. Reflect the increased challenge in each week's "
+            "title, objective, and module descriptions. The summary_note MUST mention "
+            "that the curriculum has been made harder at the user's request."
+        )
 
     completion = client.chat.completions.create(
         model=Config.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+            {"role": "user", "content": user_content},
         ],
         response_format={
             "type": "json_schema",

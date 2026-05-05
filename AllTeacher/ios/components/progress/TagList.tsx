@@ -18,15 +18,15 @@ const VARIANT = {
   weak: {
     emoji: "🎯",
     title: "Focus areas",
-    fg: "#a16207",
-    bg: colors.warningSoft,
+    fg: colors.warn,
+    bg: colors.warnSoft,
     empty: "Nothing flagged yet — keep going.",
   },
   strength: {
     emoji: "✨",
     title: "Strengths",
-    fg: "#15803d",
-    bg: colors.successSoft,
+    fg: colors.ok,
+    bg: colors.okSoft,
     empty: "We'll surface strengths once you've nailed a few exercises.",
   },
 } as const;

@@ -103,8 +103,8 @@ export type WeekRow = {
 
 // --- Exercises (Exercise Writer + Evaluator) ---
 
-// `essay_prompt` is a legacy type — new generations only emit the three
-// types above. The iOS renderer still routes it to ShortAnswer so old
+// `essay_prompt` is a legacy type — new generations only emit the four
+// types below. The iOS renderer still routes it to ShortAnswer so old
 // rows in the DB keep rendering after the schema change.
 export type ExerciseType =
   | "multiple_choice"
@@ -112,9 +112,9 @@ export type ExerciseType =
   | "short_answer"
   | "essay_prompt"
   | "listen_choice"
-  | "image_match";  // reserved — no Writer support yet, here so the
-                    // discriminated union narrows cleanly when the
-                    // next iteration ships it.
+  | "video_choice"  // YouTube embed + MCQ: user watches a short clip,
+                    // then answers a comprehension question.
+  | "image_match";  // reserved — no Writer support yet.
 
 export type ExerciseContent = {
   type: ExerciseType;
@@ -143,9 +143,16 @@ export type ExerciseContent = {
   audio_text?: string;
   language?: string;
   prompt_native?: string;
-  // image_match (reserved) — URL of the image shown above the
-  // multiple-choice options (which reuse `options` + `correct_index`).
+  // video_choice — YouTube embed URL resolved by the orchestrator via
+  // YouTube Data API v3. `video_query` is the search terms the Writer
+  // emitted; not displayed to the user.
+  video_url?: string;
+  video_query?: string;
+  // image_url — Unsplash photo URL resolved by the orchestrator. Set on
+  // any exercise type when the Writer emitted an `image_query`. Shown
+  // above the prompt as a visual anchor.
   image_url?: string;
+  image_query?: string;
 };
 
 export type ExerciseSubmission =
@@ -220,11 +227,10 @@ export type LessonContent = {
   pitfalls: string[];
   next_up: string;
   // Optional Mermaid source. Empty string = no diagram for this concept.
-  // The Explainer is told to leave it empty for short text-only lessons
-  // and to fill it for structural concepts (process flows, hierarchies,
-  // sequences, comparisons). Rendered client-side via a WebView +
-  // mermaid.min.js — see components/lesson/MermaidDiagram.tsx.
   diagram_mermaid?: string;
+  // Optional Unsplash photo URL resolved by the orchestrator. Shown at
+  // the top of the lesson card as a visual hook.
+  image_url?: string;
 };
 
 export type LessonRow = {
@@ -323,6 +329,7 @@ export type CurriculumProgressDetail = {
   weeks: WeekProgress[];
   top_weak_areas: TagStat[];
   top_strengths: TagStat[];
+  mastered_concepts: string[];
   streak: StreakSummary;
   activity: ActivityDay[];
 };
@@ -349,7 +356,7 @@ export type AdminOverview = {
     mau: number;
   };
   subscriptions: {
-    by_tier: { free: number; pro: number; power: number };
+    by_tier: { free: number; starter: number; pro: number; power: number };
     paying: number;
     mrr_cents: number;
     currency: string;
@@ -360,7 +367,7 @@ export type AdminOverview = {
     currency: string;
   };
   margin: { last_30d_cents: number };
-  tier_prices: { free: number; pro: number; power: number };
+  tier_prices: { free: number; starter: number; pro: number; power: number };
 };
 
 export type AdminUser = {
@@ -406,7 +413,7 @@ export type AdminProfit = { months: AdminProfitMonth[] };
 
 // --- Subscription / tier (no payments yet — admin-grant only) -----------
 
-export type Tier = "free" | "pro" | "power";
+export type Tier = "free" | "starter" | "pro" | "power";
 
 export type SubscriptionStatus =
   | "active"
@@ -434,7 +441,7 @@ export type Subscription = {
 
 export type GrantTierBody = {
   user_id: string;
-  tier: "pro" | "power";
+  tier: "starter" | "pro" | "power";
   /** Days from now until current_period_end. Backend defaults to 30. */
   days?: number;
 };
@@ -672,6 +679,38 @@ export const api = {
     request<ReplanResponse>(`/curriculum/${curriculumId}/replan`, {
       method: "POST",
       headers: authHeaders(token),
+    }),
+
+  /**
+   * "Add more sessions" — generate a bonus batch of exercises that
+   * target the user's weak areas. No new weeks; inserts exercises with
+   * module_index=null so the session screen groups them separately.
+   */
+  addMoreSessions: (token: string, curriculumId: string, weekId?: string) =>
+    request<GenerateExercisesResponse>(
+      `/curriculum/${curriculumId}/exercises`,
+      {
+        method: "POST",
+        headers: authHeaders(token),
+        body: JSON.stringify({
+          focus_weak_areas: true,
+          count: 5,
+          ...(weekId ? { week_id: weekId } : {}),
+        }),
+      },
+    ),
+
+  /**
+   * "Make it harder" — replan upcoming weeks with an explicit difficulty
+   * boost. Backed by the same Adapter as `replan` but injects an extra
+   * instruction that raises the challenge ceiling across all upcoming weeks.
+   * Pro+ only (backend returns 402 for free tier).
+   */
+  makeHarder: (token: string, curriculumId: string) =>
+    request<ReplanResponse>(`/curriculum/${curriculumId}/replan`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ difficulty_boost: true }),
     }),
 
   // --- Admin (boian4934@gmail.com only — backend returns 404 otherwise) ---

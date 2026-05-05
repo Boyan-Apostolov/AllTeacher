@@ -1,20 +1,16 @@
 /**
- * One week card — title + objective + module list + start CTA. Visual
- * state derives from `row.status`:
- *
- *   - complete   → green border, "Completed" pill, "Review session ✓" CTA
- *   - in_progress → "In progress" pill + "Continue session →" CTA
- *   - upcoming    → brand border (matches the "Up next" hero) + "Start"
- *   - default     → no special border
+ * WeekCard — neo-brutalist redesign.
+ * White card, chunky border + offset shadow, color-coded by state.
  */
 import { Pressable, Text, View } from "react-native";
-
 import type { PlanWeek, WeekRow } from "@/lib/api";
-import { weekGradient } from "@/lib/curriculum";
-import { Gradient } from "@/components/Gradient";
 import { colors } from "@/lib/theme";
-
 import { weekCardStyles as styles } from "./WeekCard.styles";
+
+function weekColor(index: number) {
+  const palette = [colors.brand, colors.flash, colors.mc, colors.short, colors.ok, colors.amber];
+  return palette[index % palette.length];
+}
 
 export function WeekCard({
   row,
@@ -28,7 +24,7 @@ export function WeekCard({
   onStartSession?: () => void;
 }) {
   const week: PlanWeek = row.plan_json;
-  const grad = weekGradient(index);
+  const badgeColor = weekColor(index);
   const isComplete = row.status === "complete";
   const isInProgress = row.status === "in_progress";
 
@@ -41,26 +37,21 @@ export function WeekCard({
       ]}
     >
       <View style={styles.header}>
-        <Gradient
-          from={grad.from}
-          to={grad.to}
-          angle={135}
-          style={styles.badge}
-        >
+        <View style={[styles.badge, { backgroundColor: isComplete ? colors.ok : badgeColor }]}>
           <Text style={styles.badgeText}>
-            {isComplete ? "✓" : `W${week.week_number}`}
+            {isComplete ? "✓" : `${week.week_number}`}
           </Text>
-        </Gradient>
+        </View>
         <View style={styles.headerCol}>
           <View style={styles.titleRow}>
             <Text style={styles.title}>{week.title}</Text>
             {isComplete ? (
               <View style={styles.statusPillDone}>
-                <Text style={styles.statusPillDoneText}>Completed</Text>
+                <Text style={styles.statusPillDoneText}>Done</Text>
               </View>
             ) : isInProgress ? (
               <View style={styles.statusPillProgress}>
-                <Text style={styles.statusPillProgressText}>In progress</Text>
+                <Text style={styles.statusPillProgressText}>now</Text>
               </View>
             ) : null}
           </View>
@@ -89,9 +80,7 @@ export function WeekCard({
           <Text style={styles.metaPillText}>🎯 {week.milestone}</Text>
         </View>
         <View style={styles.metaPill}>
-          <Text style={styles.metaPillText}>
-            ⏱️ {week.daily_minutes} min/day
-          </Text>
+          <Text style={styles.metaPillText}>⏱ {week.daily_minutes} min/day</Text>
         </View>
       </View>
       {week.exercise_focus.length > 0 ? (
@@ -102,26 +91,14 @@ export function WeekCard({
 
       {onStartSession ? (
         <Pressable
-          style={({ pressed }) => [
-            styles.cta,
-            pressed && styles.ctaPressed,
-          ]}
+          style={({ pressed }) => [styles.cta, pressed && styles.ctaPressed]}
           onPress={onStartSession}
         >
-          <Gradient
-            from={isComplete ? colors.success : grad.from}
-            to={isComplete ? colors.success : grad.to}
-            angle={135}
-            style={styles.ctaGradient}
-          >
+          <View style={[styles.ctaGradient, { backgroundColor: isComplete ? colors.ok : badgeColor }]}>
             <Text style={styles.ctaText}>
-              {isComplete
-                ? "Review session ✓"
-                : isInProgress
-                  ? "Continue session →"
-                  : "Start session →"}
+              {isComplete ? "Review session ✓" : isInProgress ? "Continue session →" : "Start session →"}
             </Text>
-          </Gradient>
+          </View>
         </Pressable>
       ) : null}
     </View>

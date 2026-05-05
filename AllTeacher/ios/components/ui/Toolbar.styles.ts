@@ -1,35 +1,52 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const toolbarStyles = StyleSheet.create({
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
   },
   btn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: radii.pill,
-    backgroundColor: "rgba(255,255,255,0.22)",
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 2, height: 2 },
+    elevation: 2,
   },
-  btnText: {
-    fontSize: 14,
-    color: colors.textOnDark,
-    fontWeight: "700",
+  btnPressed: {
+    shadowOffset: { width: 0, height: 0 },
+    transform: [{ translateX: 2 }, { translateY: 2 }],
+  },
+  btnIcon: {
+    fontSize: 20,
+    color: colors.ink,
+    fontWeight: "900",
+    lineHeight: 22,
+    textAlign: "center",
   },
   btnSpacer: {
-    // Keeps the title centered when only one of {back, home} is present.
-    minWidth: 64,
+    width: 40,
   },
   title: {
-    color: colors.textOnDark,
+    flex: 1,
+    textAlign: "center",
+    color: colors.ink,
     fontSize: 14,
-    fontWeight: "700",
-    letterSpacing: 0.4,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    marginHorizontal: spacing.sm,
   },
   middle: {
     flex: 1,

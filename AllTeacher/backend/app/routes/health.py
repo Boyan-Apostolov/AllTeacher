@@ -11,5 +11,9 @@ def health():
         "status": "ok",
         "service": "allteacher-backend",
         "env": Config.FLASK_ENV,
-        "configured": Config.is_configured(),
+        "configured": {
+            **Config.is_configured(),
+            "unsplash": bool(Config.UNSPLASH_ACCESS_KEY),
+            "youtube": bool(Config.YOUTUBE_API_KEY),
+        },
     })

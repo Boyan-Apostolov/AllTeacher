@@ -132,10 +132,10 @@ def require_auth(fn):
 def _load_user_tier(user_id: str | None) -> str:
     """Resolve the user's effective subscription tier.
 
-    Returns one of: 'free', 'pro', 'power'. Defaults to 'free' for
-    every error case (missing row, expired period, non-active status,
-    Supabase unreachable). The tier hierarchy is enforced upstream by
-    `tier_check.TIER_RANK`.
+    Returns one of: 'free', 'starter', 'pro', 'power'. Defaults to
+    'free' for every error case (missing row, expired period, non-active
+    status, Supabase unreachable). The tier hierarchy is enforced
+    upstream by `tier_check.TIER_RANK`.
     """
     if not user_id:
         return "free"
@@ -171,7 +171,7 @@ def _load_user_tier(user_id: str | None) -> str:
         except (ValueError, AttributeError):
             pass
     tier = (sub.get("tier") or "free").lower()
-    if tier not in ("free", "pro", "power"):
+    if tier not in ("free", "starter", "pro", "power"):
         return "free"
     return tier
 

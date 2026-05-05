@@ -1,13 +1,18 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const feedbackCardStyles = StyleSheet.create({
   card: {
     padding: spacing.lg,
-    borderRadius: radii.xl,
+    borderRadius: 16,
     gap: spacing.sm,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 4, height: 4 },
+    elevation: 4,
   },
   header: {
     flexDirection: "row",
@@ -22,7 +27,7 @@ export const feedbackCardStyles = StyleSheet.create({
   icon: { fontSize: 22 },
   verdict: {
     fontSize: 14,
-    fontWeight: "800",
+    fontWeight: "900",
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },
@@ -32,21 +37,21 @@ export const feedbackCardStyles = StyleSheet.create({
     letterSpacing: -0.5,
   },
   body: {
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
+    fontSize: 15,
+    color: colors.ink2,
+    lineHeight: 22,
   },
   block: {
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.06)",
+    borderTopWidth: 1.5,
+    borderTopColor: "rgba(26,20,16,0.12)",
     gap: 4,
   },
   label: {
     fontSize: 11,
-    fontWeight: "800",
-    color: colors.textMuted,
+    fontWeight: "900",
+    color: colors.ink3,
     textTransform: "uppercase",
     letterSpacing: 0.6,
   },

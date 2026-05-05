@@ -32,41 +32,40 @@ function toneFor(verdict: ExerciseFeedback["verdict"]): Tone {
     return {
       icon: "🎉",
       label: "Correct!",
-      bg: colors.successSoft,
-      fg: colors.success,
+      bg: colors.okSoft,
+      fg: colors.ok,
     };
   }
   if (verdict === "incorrect") {
     return {
       icon: "💪",
       label: "Not quite",
-      bg: colors.dangerSoft,
-      fg: colors.danger,
+      bg: colors.warnSoft,
+      fg: colors.warn,
     };
   }
   if (verdict === "reviewed") {
     return {
       icon: "🔁",
       label: "Reviewed",
-      bg: colors.infoSoft,
-      fg: colors.info,
+      bg: colors.flashSoft,
+      fg: colors.flash,
     };
   }
   return {
     icon: "📝",
     label: "Partial",
-    bg: colors.warningSoft,
-    fg: colors.warning,
+    bg: colors.shortSoft,
+    fg: colors.short,
   };
 }
 
-// Neutral "still scoring" tone used while streaming. The verdict isn't
-// trustworthy mid-stream so we deliberately avoid the green/red palette.
+// Neutral "still scoring" tone used while streaming.
 const STREAMING_TONE: Tone = {
   icon: "✍️",
   label: "Scoring",
-  bg: colors.infoSoft,
-  fg: colors.info,
+  bg: colors.flashSoft,
+  fg: colors.flash,
 };
 
 /** Blinking caret rendered at the end of streaming text fields. */

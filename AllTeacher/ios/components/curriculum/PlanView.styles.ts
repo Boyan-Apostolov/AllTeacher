@@ -1,16 +1,14 @@
 import { StyleSheet } from "react-native";
-
-import { colors, radii, shadow, spacing } from "@/lib/theme";
+import { colors, spacing } from "@/lib/theme";
 
 export const planViewStyles = StyleSheet.create({
   heroBlock: {
     gap: spacing.sm,
-    paddingHorizontal: spacing.xs,
   },
   eyebrow: {
-    color: "rgba(255,255,255,0.85)",
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: "900",
+    color: colors.ink3,
     letterSpacing: 1.2,
     textTransform: "uppercase",
     marginTop: spacing.sm,
@@ -18,32 +16,36 @@ export const planViewStyles = StyleSheet.create({
   title: {
     fontSize: 30,
     fontWeight: "900",
-    color: colors.textOnDark,
+    color: colors.ink,
     letterSpacing: -0.4,
     lineHeight: 36,
   },
   sub: {
     fontSize: 15,
-    color: "rgba(255,255,255,0.92)",
+    color: colors.ink3,
     lineHeight: 22,
   },
-
   sectionHeader: {
     fontSize: 12,
-    fontWeight: "800",
-    color: colors.textOnDark,
+    fontWeight: "900",
+    color: colors.ink3,
     textTransform: "uppercase",
     letterSpacing: 1,
     paddingHorizontal: spacing.xs,
   },
-
   phaseCard: {
     flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     padding: spacing.lg,
     gap: spacing.md,
-    ...shadow.card,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
   phaseStripe: {
     width: 4,
@@ -54,7 +56,7 @@ export const planViewStyles = StyleSheet.create({
   phaseName: {
     fontSize: 17,
     fontWeight: "800",
-    color: colors.text,
+    color: colors.ink,
   },
   phaseWeeks: {
     fontSize: 11,
@@ -65,18 +67,23 @@ export const planViewStyles = StyleSheet.create({
   },
   phaseDesc: {
     fontSize: 14,
-    color: colors.text,
+    color: colors.ink2,
     lineHeight: 20,
   },
-
   emptyCard: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.card,
     padding: spacing.lg,
-    borderRadius: radii.xl,
-    ...shadow.card,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: colors.ink,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 3, height: 3 },
+    elevation: 3,
   },
   emptyText: {
     fontSize: 13,
-    color: colors.textMuted,
+    color: colors.ink3,
   },
 });
