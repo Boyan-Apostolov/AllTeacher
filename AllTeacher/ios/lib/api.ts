@@ -356,7 +356,7 @@ export type AdminOverview = {
     mau: number;
   };
   subscriptions: {
-    by_tier: { free: number; pro: number; power: number };
+    by_tier: { free: number; starter: number; pro: number; power: number };
     paying: number;
     mrr_cents: number;
     currency: string;
@@ -367,7 +367,7 @@ export type AdminOverview = {
     currency: string;
   };
   margin: { last_30d_cents: number };
-  tier_prices: { free: number; pro: number; power: number };
+  tier_prices: { free: number; starter: number; pro: number; power: number };
 };
 
 export type AdminUser = {
@@ -413,7 +413,7 @@ export type AdminProfit = { months: AdminProfitMonth[] };
 
 // --- Subscription / tier (no payments yet — admin-grant only) -----------
 
-export type Tier = "free" | "pro" | "power";
+export type Tier = "free" | "starter" | "pro" | "power";
 
 export type SubscriptionStatus =
   | "active"
@@ -441,7 +441,7 @@ export type Subscription = {
 
 export type GrantTierBody = {
   user_id: string;
-  tier: "pro" | "power";
+  tier: "starter" | "pro" | "power";
   /** Days from now until current_period_end. Backend defaults to 30. */
   days?: number;
 };

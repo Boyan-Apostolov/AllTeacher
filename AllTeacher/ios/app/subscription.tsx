@@ -1,10 +1,12 @@
 /**
  * Subscription & Upgrade screen — shows the user's current plan and lets
- * them upgrade to Pro or Power. Upgrade buttons are active (tappable with
- * feedback) but not connected to RevenueCat / Apple IAP yet.
+ * them upgrade to Starter, Pro, or Power. Upgrade buttons are active (tappable
+ * with feedback) but not connected to RevenueCat / Apple IAP yet.
  * That wiring lands in step 7b.
+ *
+ * Tier ladder: free (€0) → starter (€3) → pro (€8) → power (€15)
  */
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Stack, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
@@ -16,10 +18,11 @@ import { ScreenContainer, Toolbar, LoadingBlock, MessageBox } from "@/components
 import { Sticker } from "@/components/ui/Sticker";
 import { colors } from "@/lib/theme";
 import { subStyles as styles } from "./subscription.styles";
+import { purchaseTier, restorePurchases } from "@/lib/revenuecat";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tier = "free" | "pro" | "power";
+type Tier = "free" | "starter" | "pro" | "power";
 
 interface TierFeature {
   text: string;
@@ -30,17 +33,18 @@ interface TierFeature {
 
 const FEATURES: TierFeature[] = [
   { text: "1 active curriculum",          tiers: ["free"] },
-  { text: "Up to 3 curricula",             tiers: ["pro", "power"] },
-  { text: "Unlimited curricula",           tiers: ["power"] },
-  { text: "Assessor + weekly planner",     tiers: ["free", "pro", "power"] },
-  { text: "Lessons + exercises",           tiers: ["free", "pro", "power"] },
-  { text: "Streaming feedback",            tiers: ["free", "pro", "power"] },
-  { text: "Listening exercises (TTS)",     tiers: ["pro", "power"] },
-  { text: "Visual lessons (diagrams)",     tiers: ["free", "pro", "power"] },
-  { text: "Adaptive re-planner",           tiers: ["pro", "power"] },
-  { text: "Make it harder / Add sessions", tiers: ["pro", "power"] },
-  { text: "Vocabulary bank",               tiers: ["free", "pro", "power"] },
-  { text: "Priority AI (faster models)",   tiers: ["power"] },
+  { text: "Up to 2 curricula",            tiers: ["starter"] },
+  { text: "Up to 5 curricula",            tiers: ["pro"] },
+  { text: "Unlimited curricula",          tiers: ["power"] },
+  { text: "Assessor + weekly planner",    tiers: ["free", "starter", "pro", "power"] },
+  { text: "Lessons + exercises",          tiers: ["free", "starter", "pro", "power"] },
+  { text: "Streaming feedback",           tiers: ["free", "starter", "pro", "power"] },
+  { text: "Listening exercises (TTS)",    tiers: ["starter", "pro", "power"] },
+  { text: "Visual lessons (diagrams)",    tiers: ["free", "starter", "pro", "power"] },
+  { text: "Adaptive re-planner",          tiers: ["starter", "pro", "power"] },
+  { text: "Make it harder / Add sessions",tiers: ["pro", "power"] },
+  { text: "Vocabulary bank",              tiers: ["free", "starter", "pro", "power"] },
+  { text: "Priority AI (faster models)",  tiers: ["power"] },
 ];
 
 const COMPARISON_FEATURES = [
@@ -48,16 +52,18 @@ const COMPARISON_FEATURES = [
   "Lessons & exercises",
   "Listening exercises",
   "Adaptive re-planner",
+  "Make it harder",
   "Vocabulary bank",
   "Priority AI",
 ];
-const COMPARISON_MATRIX: Record<string, [string, string, string]> = {
-  "Curricula":              ["1",  "3",  "∞"],
-  "Lessons & exercises":    ["✓",  "✓",  "✓"],
-  "Listening exercises":    ["✗",  "✓",  "✓"],
-  "Adaptive re-planner":    ["✗",  "✓",  "✓"],
-  "Vocabulary bank":        ["✓",  "✓",  "✓"],
-  "Priority AI":            ["✗",  "✗",  "✓"],
+const COMPARISON_MATRIX: Record<string, [string, string, string, string]> = {
+  "Curricula":              ["1",  "2",  "5",  "∞"],
+  "Lessons & exercises":    ["✓",  "✓",  "✓",  "✓"],
+  "Listening exercises":    ["✗",  "✓",  "✓",  "✓"],
+  "Adaptive re-planner":    ["✗",  "✓",  "✓",  "✓"],
+  "Make it harder":         ["✗",  "✗",  "✓",  "✓"],
+  "Vocabulary bank":        ["✓",  "✓",  "✓",  "✓"],
+  "Priority AI":            ["✗",  "✗",  "✗",  "✓"],
 };
 
 interface PlanDef {
@@ -90,29 +96,42 @@ const PLANS: PlanDef[] = [
     ],
   },
   {
-    tier: "pro",
+    tier: "starter",
     emoji: "✦",
-    name: "Pro",
-    price: "€7.99",
+    name: "Starter",
+    price: "€3",
     pricePer: "/ month",
-    tagline: "Serious learners — multiple goals, listening drills, adaptive re-plans.",
+    tagline: "Step up — two curricula, listening drills, and adaptive re-plans.",
     color: colors.brand,
     features: [
-      "Up to 3 curricula",
+      "Up to 2 curricula",
       "Everything in Free",
       "Listening exercises (TTS audio)",
       "Adaptive re-planner",
+    ],
+  },
+  {
+    tier: "pro",
+    emoji: "⚡",
+    name: "Pro",
+    price: "€8",
+    pricePer: "/ month",
+    tagline: "Serious learners — up to 5 goals, harder drills, full control.",
+    color: colors.mc,
+    features: [
+      "Up to 5 curricula",
+      "Everything in Starter",
       "Make it harder / Add sessions",
     ],
   },
   {
     tier: "power",
-    emoji: "⚡",
+    emoji: "👑",
     name: "Power",
-    price: "€14.99",
+    price: "€15",
     pricePer: "/ month",
     tagline: "Unlimited everything — fastest models, no caps, no limits.",
-    color: colors.mc,
+    color: "#7C3AED",
     features: [
       "Unlimited curricula",
       "Everything in Pro",
@@ -123,7 +142,7 @@ const PLANS: PlanDef[] = [
 ];
 
 // Tier rank — used to filter out lower/equal plans
-const TIER_RANK: Record<Tier, number> = { free: 0, pro: 1, power: 2 };
+const TIER_RANK: Record<Tier, number> = { free: 0, starter: 1, pro: 2, power: 3 };
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -134,11 +153,15 @@ function TierCard({
   status,
   meta,
   onPress,
+  disabled = false,
+  loading = false,
 }: {
   plan: PlanDef;
   status: CardStatus;
   meta?: string | null;
   onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
 }) {
   const isCurrent = status === "current";
 
@@ -193,15 +216,23 @@ function TierCard({
         </View>
       ) : status === "upgrade" ? (
         <Pressable
-          style={[styles.upgradeBtn, { backgroundColor: plan.color }]}
+          style={[
+            styles.upgradeBtn,
+            { backgroundColor: plan.color },
+            (disabled || loading) && styles.upgradeBtnDisabled,
+          ]}
           onPress={onPress}
+          disabled={disabled || loading}
         >
-          <Text style={styles.upgradeBtnText}>Upgrade to {plan.name} →</Text>
+          <Text style={styles.upgradeBtnText}>
+            {loading ? "Processing…" : `Upgrade to ${plan.name} →`}
+          </Text>
         </Pressable>
       ) : (
         <Pressable
           style={[styles.upgradeBtn, styles.downgradeBtn]}
           onPress={onPress}
+          disabled={disabled || loading}
         >
           <Text style={[styles.upgradeBtnText, styles.downgradeBtnText]}>
             Switch to {plan.name}
@@ -221,6 +252,7 @@ export default function SubscriptionScreen() {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [purchasing, setPurchasing] = useState<Tier | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -253,25 +285,60 @@ export default function SubscriptionScreen() {
     (subscription?.tier as Tier) ??
     "free";
 
-  const handleUpgrade = (plan: PlanDef) => {
-    Alert.alert(
-      `Upgrade to ${plan.name}`,
-      `In-app purchase via Apple IAP — coming soon!\n\nPrice: ${plan.price}${plan.pricePer}`,
-      [{ text: "OK" }],
-    );
+  const loadSubscription = useCallback(() => {
+    if (!session?.access_token) return;
+    api.mySubscription(session.access_token).then(setSubscription).catch(() => {});
+  }, [session?.access_token]);
+
+  const handleUpgrade = async (plan: PlanDef) => {
+    if (plan.tier === "free") return;
+    setPurchasing(plan.tier);
+    try {
+      await purchaseTier(plan.tier);
+      // Refresh backend subscription after successful purchase
+      loadSubscription();
+      Alert.alert(
+        "You're all set! 🎉",
+        `Welcome to ${plan.name}. Your new features are active now.`,
+        [{ text: "Let's go" }],
+      );
+    } catch (err: unknown) {
+      // Don't show an error if the user simply cancelled the sheet
+      const errObj = err as { userCancelled?: boolean; message?: string };
+      if (errObj?.userCancelled) return;
+      Alert.alert(
+        "Purchase failed",
+        errObj?.message ?? "Something went wrong. Please try again.",
+        [{ text: "OK" }],
+      );
+    } finally {
+      setPurchasing(null);
+    }
   };
 
-  const handleRestorePurchases = () =>
-    Alert.alert("Restore purchases", "Apple IAP restore — coming soon!");
+  const handleRestorePurchases = async () => {
+    setPurchasing("free"); // use "free" as a sentinel for restore loading state
+    try {
+      await restorePurchases();
+      loadSubscription();
+      Alert.alert("Purchases restored", "Your subscription has been restored.", [
+        { text: "OK" },
+      ]);
+    } catch {
+      Alert.alert("Restore failed", "No purchases found to restore.", [
+        { text: "OK" },
+      ]);
+    } finally {
+      setPurchasing(null);
+    }
+  };
 
-  const handleManageSubscription = () =>
-    Alert.alert(
-      "Manage subscription",
-      "Opens App Store subscription management — coming soon!",
-    );
+  const handleManageSubscription = () => {
+    Linking.openURL("itms-apps://apps.apple.com/account/subscriptions");
+  };
 
   const handleContactSupport = () =>
-    Alert.alert("Contact support", "Support email — coming soon!");
+    Linking.openURL("mailto:support@allteacher.app");
 
   return (
     <ScreenContainer>
@@ -337,6 +404,8 @@ export default function SubscriptionScreen() {
                   status={status}
                   meta={meta}
                   onPress={() => handleUpgrade(plan)}
+                  disabled={purchasing !== null}
+                  loading={purchasing === plan.tier}
                 />
               );
             })}
@@ -353,7 +422,7 @@ export default function SubscriptionScreen() {
                 Feature
               </Text>
             </View>
-            {(["Free", "Pro", "Power"] as const).map((h) => (
+            {(["Free", "Start.", "Pro", "Power"] as const).map((h) => (
               <View key={h} style={styles.comparisonHeaderCell}>
                 <Text style={styles.comparisonHeaderText}>{h}</Text>
               </View>
@@ -362,7 +431,7 @@ export default function SubscriptionScreen() {
           {/* Rows */}
           {COMPARISON_FEATURES.map((feat, i) => {
             const isLast = i === COMPARISON_FEATURES.length - 1;
-            const cells = COMPARISON_MATRIX[feat];
+            const cells: [string, string, string, string] = COMPARISON_MATRIX[feat];
             return (
               <View
                 key={feat}
