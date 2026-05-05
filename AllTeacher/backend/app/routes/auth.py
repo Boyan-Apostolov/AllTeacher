@@ -77,6 +77,26 @@ def my_subscription():
     }), 200
 
 
+@bp.delete("/me")
+@require_auth
+def delete_me():
+    """Permanently delete the authenticated user and all their data.
+
+    Supabase's ON DELETE CASCADE takes care of every user-owned row
+    (curricula, subscriptions, exercise history, etc.) once the auth
+    record is removed. The service role key is required for admin
+    user deletion.
+    """
+    db = service_client()
+    if db is None:
+        return jsonify({"error": "Service unavailable"}), 503
+    try:
+        db.auth.admin.delete_user(g.user_id)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({"ok": True}), 200
+
+
 def _default_free_sub() -> dict:
     return {
         "tier": "free",

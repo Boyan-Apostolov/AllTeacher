@@ -22,6 +22,7 @@ import {
   type Subscription,
 } from "@/lib/api";
 import { useAuth, useAdmin } from "@/lib/auth";
+import { resetUser } from "@/lib/revenuecat";
 import { cacheGet, cacheSet, cacheDel } from "@/lib/cache";
 import { CurriculumRow, DiagPill } from "@/components/home";
 import { LoadingBlock, MessageBox, PrimaryCta } from "@/components/ui";
@@ -338,6 +339,50 @@ export default function Home() {
             </Pressable>
           ) : null}
         </View>
+
+        <Pressable
+          onPress={() => {
+            Alert.alert(
+              "Delete Account",
+              "This will permanently delete your account and all your curricula, progress, and subscription data. This cannot be undone.",
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Delete Account",
+                  style: "destructive",
+                  onPress: () => {
+                    Alert.alert(
+                      "Are you sure?",
+                      "Your account will be deleted immediately. You will be signed out.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Yes, delete everything",
+                          style: "destructive",
+                          onPress: async () => {
+                            if (!session?.access_token) return;
+                            try {
+                              await api.deleteAccount(session.access_token);
+                              await resetUser();
+                              await signOut();
+                            } catch (e) {
+                              Alert.alert("Error", "Could not delete account. Please try again or contact support.");
+                            }
+                          },
+                        },
+                      ],
+                    );
+                  },
+                },
+              ],
+            );
+          }}
+          style={{ alignSelf: "center", paddingVertical: 12 }}
+        >
+          <Text style={{ color: "#9ca3af", fontSize: 13, textDecorationLine: "underline" }}>
+            Delete account
+          </Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );

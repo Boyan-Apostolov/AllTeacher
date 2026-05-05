@@ -764,6 +764,12 @@ export const api = {
     request<Subscription>("/auth/me/subscription", {
       headers: authHeaders(token),
     }),
+
+  deleteAccount: (token: string) =>
+    request<{ ok: boolean }>("/auth/me", {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }),
 };
 
 // --- SSE plumbing ---------------------------------------------------------
