@@ -258,11 +258,29 @@ class _LessonsMixin:
             ).data or []
             persisted = updated[0] if updated else {**existing_row[0], **insert_row}
         else:
-            inserted = (
-                self.db.table("lessons")
-                .insert(insert_row)
-                .execute()
-            ).data or []
+            try:
+                inserted = (
+                    self.db.table("lessons")
+                    .insert(insert_row)
+                    .execute()
+                ).data or []
+            except Exception:
+                # A concurrent request beat us to the INSERT (race on the
+                # unique index: lessons_curriculum_week_module_uniq). This
+                # happens when the user exits during "Preparing" and
+                # re-enters before the first LLM call completes. Fetch
+                # the row the other request already wrote and return it —
+                # the content is identical (same module, same user context).
+                inserted = (
+                    self.db.table("lessons")
+                    .select("*")
+                    .eq("curriculum_id", curriculum_id)
+                    .eq("week_id", week_row["id"])
+                    .eq("module_index", module_index)
+                    .limit(1)
+                    .execute()
+                ).data or []
+
             if not inserted:
                 raise OrchestratorError(
                     code="lesson_persist_failed",
