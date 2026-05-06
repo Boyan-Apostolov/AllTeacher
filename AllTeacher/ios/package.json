@@ -34,7 +34,11 @@
     "react-native-sse": "^1.2.1",
     "react-native-url-polyfill": "^2.0.0",
     "react-native-web": "~0.19.10",
-    "react-native-webview": "13.8.6"
+    "react-native-webview": "13.8.6",
+    "posthog-react-native": "^3.3.5",
+    "expo-application": "~5.9.0",
+    "expo-device": "~6.0.2",
+    "expo-file-system": "~17.0.1"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

@@ -19,6 +19,7 @@ import { Stack, useRouter } from "expo-router";
 
 import { api, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { posthog } from "@/lib/posthog";
 import { LanguagePicker } from "@/components/curriculum";
 import { MessageBox, PrimaryCta, Toolbar } from "@/components/ui";
 import { Sticker } from "@/components/ui/Sticker";
@@ -68,6 +69,10 @@ export default function NewCurriculumScreen() {
     setSubmitting(true);
     try {
       const res = await api.createCurriculum(token, { goal: trimmed, native_language: lang });
+      posthog.capture("curriculum_created", {
+        curriculum_id: res.id,
+        native_language: lang,
+      });
       router.replace(`/curriculum/${res.id}`);
     } catch (e) {
       if (e instanceof ApiError && e.body?.error === "tier_curriculum_cap") {

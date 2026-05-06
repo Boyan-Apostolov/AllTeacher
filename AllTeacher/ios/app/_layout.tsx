@@ -2,9 +2,11 @@ import { useEffect } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Slot, usePathname, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { PostHogProvider, usePostHog } from "posthog-react-native";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { BottomTabBar } from "@/components/ui";
 import { configureRevenueCat, identifyUser, resetUser } from "@/lib/revenuecat";
+import { posthog } from "@/lib/posthog";
 
 // Routes that should show the persistent bottom tab bar
 const TAB_ROUTES = new Set(["/", "/progress", "/vocabulary", "/subscription"]);
@@ -22,13 +24,20 @@ function Gate() {
   const segments = useSegments();
   const pathname = usePathname();
   const router = useRouter();
+  const ph = usePostHog();
 
-  // Sync RevenueCat identity whenever the auth session changes
+  // Sync RevenueCat identity + PostHog identity whenever auth changes.
   useEffect(() => {
     if (session?.user?.id) {
       identifyUser(session.user.id);
+      // Tie all subsequent events to this user so the PostHog People
+      // view shows per-user funnels and device info.
+      ph?.identify(session.user.id, {
+        email: session.user.email,
+      });
     } else if (!loading && !session) {
       resetUser();
+      ph?.reset();
     }
   }, [session?.user?.id, loading]);
 
@@ -66,9 +75,21 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <StatusBar style="auto" />
-      <Gate />
-    </AuthProvider>
+    <PostHogProvider
+      client={posthog}
+      autocapture={{
+        // Automatically record every screen change as a $screen_view
+        // event so the PostHog Paths chart shows the real navigation
+        // funnel without any per-screen instrumentation.
+        captureScreens: true,
+        // Capture touches on Pressable/TouchableOpacity for heatmaps.
+        captureTouch: false,
+      }}
+    >
+      <AuthProvider>
+        <StatusBar style="auto" />
+        <Gate />
+      </AuthProvider>
+    </PostHogProvider>
   );
 }

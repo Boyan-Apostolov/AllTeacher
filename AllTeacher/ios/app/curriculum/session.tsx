@@ -32,6 +32,7 @@ import {
   type PlanModule,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { posthog } from "@/lib/posthog";
 import { cacheDelPrefix } from "@/lib/cache";
 import {
   ExerciseView,
@@ -163,6 +164,13 @@ export default function SessionScreen() {
           return;
         }
 
+        posthog.capture("session_started", {
+          curriculum_id: curriculumId,
+          week_id: weekId,
+          module_count: fallbackTotal,
+          resume: startIdx > 0 || lessons.length > 0,
+        });
+
         setModuleIndex(startIdx);
 
         // Match this module's existing rows so we don't re-call the
@@ -208,7 +216,8 @@ export default function SessionScreen() {
 
   // When the session reaches the finished phase, invalidate the curriculum
   // cache so the detail screen and home screen show fresh progress on the
-  // user's next visit (without needing an auto-refresh).
+  // user's next visit (without needing an auto-refresh). Also fire the
+  // session_completed analytics event.
   useEffect(() => {
     if (phase !== "finished" || !curriculumId) return;
     cacheDelPrefix(`curriculum:${curriculumId}`);
@@ -216,6 +225,19 @@ export default function SessionScreen() {
     // We don't have the userId here, so wipe all home cache entries that
     // reference this curriculum — prefix match covers it.
     cacheDelPrefix(`home:`);
+
+    const evaluated = exercises.filter((e) => e.status === "evaluated");
+    const scores = evaluated.map((e) => e.score ?? 0).filter((s) => s > 0);
+    const avgScore =
+      scores.length > 0
+        ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100
+        : null;
+    posthog.capture("session_completed", {
+      curriculum_id: curriculumId,
+      week_id: weekId,
+      exercises_total: evaluated.length,
+      avg_score: avgScore,
+    });
   }, [phase, curriculumId]);
 
   // 2. When the lesson screen needs content and we don't have it yet,
@@ -362,6 +384,12 @@ export default function SessionScreen() {
   const startExercises = async () => {
     if (!lesson || !session?.access_token) return;
     setError(null);
+    posthog.capture("lesson_viewed", {
+      curriculum_id: curriculumId,
+      week_id: weekId,
+      module_index: moduleIndex,
+      concept_title: lesson.concept_title,
+    });
     // Fire-and-forget: marking seen shouldn't block the UI.
     api
       .markLessonSeen(session.access_token, lesson.id)
@@ -421,6 +449,15 @@ export default function SessionScreen() {
       strengths?: string[];
       next_focus: string;
     }) => {
+      posthog.capture("exercise_submitted", {
+        curriculum_id: curriculumId,
+        week_id: weekId,
+        module_index: moduleIndex,
+        exercise_type: exType,
+        score: res.score,
+        verdict: res.verdict,
+        is_bonus: phase === "bonus",
+      });
       const feedback: ExerciseFeedback = {
         score: res.score,
         verdict: res.verdict,
