@@ -4,7 +4,9 @@
  */
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActionSheetIOS,
   Alert,
+  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -190,9 +192,69 @@ export default function Home() {
             <Text style={styles.headerDay}>{dayName}</Text>
             <Text style={styles.headerName}>Hey, {firstName}</Text>
           </View>
-          <View style={styles.avatar}>
+          <Pressable
+            style={({ pressed }) => [styles.avatar, pressed && { opacity: 0.7 }]}
+            onPress={() => {
+              const options = [
+                "Manage Subscription",
+                "Sign Out",
+                "Delete Account",
+                "Cancel",
+              ];
+              ActionSheetIOS.showActionSheetWithOptions(
+                {
+                  options,
+                  cancelButtonIndex: 3,
+                  destructiveButtonIndex: 2,
+                  title: user?.email ?? undefined,
+                },
+                (buttonIndex) => {
+                  if (buttonIndex === 0) {
+                    router.push("/subscription");
+                  } else if (buttonIndex === 1) {
+                    signOut();
+                  } else if (buttonIndex === 2) {
+                    Alert.alert(
+                      "Delete Account",
+                      "This will permanently delete your account and all your curricula, progress, and subscription data. This cannot be undone.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete Account",
+                          style: "destructive",
+                          onPress: () => {
+                            Alert.alert(
+                              "Are you sure?",
+                              "Your account will be deleted immediately. You will be signed out.",
+                              [
+                                { text: "Cancel", style: "cancel" },
+                                {
+                                  text: "Yes, delete everything",
+                                  style: "destructive",
+                                  onPress: async () => {
+                                    if (!session?.access_token) return;
+                                    try {
+                                      await api.deleteAccount(session.access_token);
+                                      await resetUser();
+                                      await signOut();
+                                    } catch {
+                                      Alert.alert("Error", "Could not delete account. Please try again or contact support.");
+                                    }
+                                  },
+                                },
+                              ],
+                            );
+                          },
+                        },
+                      ],
+                    );
+                  }
+                },
+              );
+            }}
+          >
             <Text style={styles.avatarText}>{firstName[0]?.toUpperCase() ?? "?"}</Text>
-          </View>
+          </Pressable>
         </View>
 
         {/* ── Streak hero ── */}
@@ -329,60 +391,13 @@ export default function Home() {
           {meError ? <Text style={styles.diagError}>{meError}</Text> : null}
         </View>
 
-        <View style={styles.bottomRow}>
-          <Pressable style={[styles.signOut, { flex: 1 }]} onPress={signOut}>
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
-          {isAdmin ? (
+        {isAdmin ? (
+          <View style={styles.bottomRow}>
             <Pressable style={[styles.signOut, styles.adminBtn]} onPress={() => router.push("/admin")}>
               <Text style={styles.signOutText}>🛠 Admin</Text>
             </Pressable>
-          ) : null}
-        </View>
-
-        <Pressable
-          onPress={() => {
-            Alert.alert(
-              "Delete Account",
-              "This will permanently delete your account and all your curricula, progress, and subscription data. This cannot be undone.",
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete Account",
-                  style: "destructive",
-                  onPress: () => {
-                    Alert.alert(
-                      "Are you sure?",
-                      "Your account will be deleted immediately. You will be signed out.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Yes, delete everything",
-                          style: "destructive",
-                          onPress: async () => {
-                            if (!session?.access_token) return;
-                            try {
-                              await api.deleteAccount(session.access_token);
-                              await resetUser();
-                              await signOut();
-                            } catch (e) {
-                              Alert.alert("Error", "Could not delete account. Please try again or contact support.");
-                            }
-                          },
-                        },
-                      ],
-                    );
-                  },
-                },
-              ],
-            );
-          }}
-          style={{ alignSelf: "center", paddingVertical: 12 }}
-        >
-          <Text style={{ color: "#9ca3af", fontSize: 13, textDecorationLine: "underline" }}>
-            Delete account
-          </Text>
-        </Pressable>
+          </View>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
