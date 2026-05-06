@@ -1,4 +1,4 @@
-name: Deploy Backend
+name: Deploy
 
 on:
   push:
@@ -9,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+    environment: production
 
     steps:
       - name: Checkout repo
@@ -46,6 +47,7 @@ jobs:
   build-ios:
     runs-on: self-hosted
     needs: deploy
+    environment: ios
     defaults:
       run:
         working-directory: AllTeacher/ios

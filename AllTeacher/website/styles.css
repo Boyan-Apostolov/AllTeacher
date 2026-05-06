@@ -419,6 +419,121 @@ footer {
   border-top: 1px solid var(--border);
 }
 
+/* HOW IT WORKS */
+.how-it-works {
+  padding: 80px 2rem;
+}
+
+.pipeline {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  max-width: 680px;
+  margin: 0 auto 2.5rem;
+}
+
+.pipeline-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  padding: 1.25rem 1.5rem;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  width: 100%;
+  background: var(--white);
+  transition: box-shadow 0.2s;
+}
+
+.pipeline-step:hover {
+  box-shadow: 0 4px 20px rgba(0,0,0,0.07);
+}
+
+.step-assessor  { border-left: 4px solid #0ea5e9; }
+.step-planner   { border-left: 4px solid #8b5cf6; }
+.step-fetcher   { border-left: 4px solid #14b8a6; }
+.step-exercise  { border-left: 4px solid #f59e0b; }
+.step-evaluator { border-left: 4px solid #f43f5e; }
+.step-tracker   { border-left: 4px solid #84cc16; }
+.step-adapter   { border-left: 4px solid #64748b; }
+
+.step-num {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--dark);
+  color: var(--white);
+  font-size: 0.8rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.step-name {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-bottom: 0.35rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tier-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #fff0eb;
+  color: var(--orange);
+  padding: 0.15rem 0.5rem;
+  border-radius: 100px;
+  border: 1px solid #ffd0be;
+}
+
+.step-desc {
+  font-size: 0.9rem;
+  color: var(--gray);
+  line-height: 1.55;
+}
+
+.pipeline-arrow {
+  font-size: 1.25rem;
+  color: var(--border);
+  padding: 0.25rem 0;
+  user-select: none;
+}
+
+.loop-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  background: linear-gradient(135deg, #f0fdf9, #fff);
+  border: 1px solid #99f6e4;
+  border-radius: 16px;
+  padding: 1.5rem;
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.loop-icon {
+  font-size: 2rem;
+  flex-shrink: 0;
+}
+
+.loop-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f766e;
+  margin-bottom: 0.4rem;
+}
+
+.loop-desc {
+  font-size: 0.9rem;
+  color: var(--gray);
+  line-height: 1.55;
+}
+
 /* PROSE PAGES (privacy, support, terms) */
 .prose-page {
   padding: 80px 2rem;
