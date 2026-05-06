@@ -9,7 +9,7 @@ import { configureRevenueCat, identifyUser, resetUser } from "@/lib/revenuecat";
 import { posthog } from "@/lib/posthog";
 
 // Routes that should show the persistent bottom tab bar
-const TAB_ROUTES = new Set(["/", "/progress", "/vocabulary", "/subscription"]);
+const TAB_ROUTES = new Set(["/", "/progress", "/vocabulary", "/subscription", "/admin"]);
 
 /**
  * Gate wraps the routed screens and redirects based on session state:

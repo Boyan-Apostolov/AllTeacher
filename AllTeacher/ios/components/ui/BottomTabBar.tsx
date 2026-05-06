@@ -6,27 +6,33 @@
 import { Pressable, Text, View } from "react-native";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useAdmin } from "@/lib/auth";
 import { bottomTabStyles as styles } from "./BottomTabBar.styles";
 
 // ── Height constant exported so scroll views can add matching padding ─────────
 export const TAB_BAR_CONTENT_HEIGHT = 60; // px, excluding safe-area bottom
 
-// ── Tab definitions ───────────────────────────────────────────────────────────
-const TABS = [
+// ── Base tab definitions ──────────────────────────────────────────────────────
+const BASE_TABS = [
   { label: "Home",     emoji: "🏠", route: "/" },
   { label: "Progress", emoji: "📈", route: "/progress" },
   { label: "Vocab",    emoji: "📖", route: "/vocabulary" },
   { label: "Plans",    emoji: "✦",  route: "/subscription" },
 ] as const;
 
+const ADMIN_TAB = { label: "Admin", emoji: "🛠", route: "/admin" } as const;
+
 export function BottomTabBar() {
   const router   = useRouter();
   const pathname = usePathname();
   const insets   = useSafeAreaInsets();
+  const isAdmin  = useAdmin();
+
+  const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS;
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const active = pathname === tab.route;
         return (
           <Pressable

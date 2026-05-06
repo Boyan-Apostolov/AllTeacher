@@ -21,7 +21,7 @@
  * revenue) are labelled — the dashboard cares about the trend more
  * than the precise dollar figure, so this is acceptable for v1.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Alert,
   Modal,
@@ -33,15 +33,18 @@ import {
   View,
 } from "react-native";
 import { Stack, useFocusEffect, useRouter } from "expo-router";
+import * as Application from "expo-application";
 
 import {
   api,
   ApiError,
+  BASE_URL,
   type AdminEngagement,
   type AdminOverview,
   type AdminProfit,
   type AdminUsage,
   type AdminUser,
+  type HealthResponse,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
@@ -130,6 +133,24 @@ function Kpi({
   );
 }
 
+// --- diag pill ---------------------------------------------------------
+
+function DiagPill({ ok, label }: { ok: boolean | null; label: string }) {
+  const bg =
+    ok === null
+      ? colors.ink4
+      : ok
+      ? colors.ok
+      : colors.warn;
+  return (
+    <View style={{ backgroundColor: bg, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 5, borderWidth: 2, borderColor: colors.ink }}>
+      <Text style={{ fontSize: 11, fontWeight: "900", color: "#fff", letterSpacing: 0.5 }}>
+        {ok === null ? "…" : ok ? "✓" : "✕"} {label}
+      </Text>
+    </View>
+  );
+}
+
 // --- screen ------------------------------------------------------------
 
 export default function AdminScreen() {
@@ -143,6 +164,26 @@ export default function AdminScreen() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+
+  // ── Diagnostics — independent of the main data load ──────────────────
+  // These fire immediately on mount so that if the main load dies
+  // (e.g. 500 from the DB), the health + JWT status is still visible.
+  const [diagHealth, setDiagHealth] = useState<HealthResponse | null>(null);
+  const [diagHealthErr, setDiagHealthErr] = useState<string | null>(null);
+  const [diagMeOk, setDiagMeOk] = useState<boolean | null>(null);
+  const [diagMeErr, setDiagMeErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api.health()
+      .then((h) => setDiagHealth(h))
+      .catch((e: Error) => setDiagHealthErr(e.message));
+    if (session?.access_token) {
+      api.me(session.access_token)
+        .then(() => setDiagMeOk(true))
+        .catch((e: Error) => { setDiagMeOk(false); setDiagMeErr(e.message); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Grant-tier modal state. `granting` blocks the row buttons while a
   // request is in flight; `grantTarget` (when set) opens the modal.
@@ -201,6 +242,27 @@ export default function AdminScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        {/* ── Diagnostics — always visible, loads independently ─────── */}
+        <View style={[styles.card, { gap: spacing.sm }]}>
+          <Text style={styles.sectionTitle}>System diagnostics</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <DiagPill ok={diagHealth !== null ? true : (diagHealthErr ? false : null)} label="API" />
+            <DiagPill ok={diagMeOk} label="JWT" />
+            <DiagPill ok={diagHealth?.configured.openai ?? null} label="OpenAI" />
+            <DiagPill ok={diagHealth?.configured.supabase ?? null} label="Supabase" />
+          </View>
+          <Text style={{ fontSize: 11, color: colors.ink3, fontFamily: "monospace" }}>{BASE_URL}</Text>
+          <Text style={{ fontSize: 11, color: colors.ink3, fontFamily: "monospace" }}>
+            v{Application.nativeApplicationVersion ?? "?"} ({Application.nativeBuildVersion ?? "?"})
+          </Text>
+          {diagHealthErr ? (
+            <Text style={{ fontSize: 12, color: colors.warn }}>{diagHealthErr}</Text>
+          ) : null}
+          {diagMeErr ? (
+            <Text style={{ fontSize: 12, color: colors.warn }}>{diagMeErr}</Text>
+          ) : null}
+        </View>
+
         {error ? <MessageBox variant="error" message={error} /> : null}
 
         {isLoading ? (

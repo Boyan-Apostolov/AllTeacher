@@ -6,7 +6,6 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActionSheetIOS,
   Alert,
-  Linking,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,22 +17,17 @@ import { useRouter } from "expo-router";
 
 import {
   api,
-  BASE_URL,
-  type ActivityDay,
   type CurriculumListItem,
   type DashboardSummary,
-  type HealthResponse,
   type Subscription,
-  type StreakSummary,
 } from "@/lib/api";
-import { useAuth, useAdmin } from "@/lib/auth";
+import { useAuth } from "@/lib/auth";
 import { resetUser } from "@/lib/revenuecat";
 import { cacheGet, cacheSet, cacheDel } from "@/lib/cache";
-import { CurriculumRow, DiagPill } from "@/components/home";
+import { CurriculumRow } from "@/components/home";
 import { LoadingBlock, MessageBox, PrimaryCta } from "@/components/ui";
 import { Sticker } from "@/components/ui/Sticker";
 import { Spark } from "@/components/ui/Spark";
-import { pickGreeting } from "@/lib/curriculum";
 import { colors, spacing, type } from "@/lib/theme";
 
 import { homeStyles as styles } from "./index.styles";
@@ -59,12 +53,7 @@ function TierBadge({ subscription }: { subscription: Subscription | null }) {
 export default function Home() {
   const router = useRouter();
   const { user, session, signOut } = useAuth();
-  const isAdmin = useAdmin();
 
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [meOk, setMeOk] = useState<boolean | null>(null);
-  const [meError, setMeError] = useState<string | null>(null);
-  const [healthError, setHealthError] = useState<string | null>(null);
   const [curricula, setCurricula] = useState<CurriculumListItem[] | null>(null);
   const [curriculaError, setCurriculaError] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
@@ -80,17 +69,6 @@ export default function Home() {
     if (!session?.access_token || !userId) return;
     const token = session.access_token;
     let cancelled = false;
-
-    api.health()
-      .then((h) => { if (!cancelled) setHealth(h); })
-      .catch((e: Error) => { if (!cancelled) setHealthError(e.message); });
-    api.me(token)
-      .then(() => { if (!cancelled) setMeOk(true); })
-      .catch((e: Error) => {
-        if (cancelled) return;
-        setMeOk(false);
-        setMeError(e.message);
-      });
 
     (async () => {
       if (ckCurricula) {
@@ -426,27 +404,6 @@ export default function Home() {
           </View>
         </View>
 
-        {/* ── Diagnostics ── */}
-        <View style={{ gap: spacing.sm }}>
-          <Text style={styles.sectionLabel}>Diagnostics</Text>
-          <View style={styles.diagRow}>
-            <DiagPill ok={!healthError && !!health} label="API" />
-            <DiagPill ok={meOk === true} label="JWT" />
-            <DiagPill ok={!!health?.configured.openai} label="OpenAI" />
-            <DiagPill ok={!!health?.configured.supabase} label="Supabase" />
-          </View>
-          <Text style={styles.diagDetail}>{BASE_URL}</Text>
-          {healthError ? <Text style={styles.diagError}>{healthError}</Text> : null}
-          {meError ? <Text style={styles.diagError}>{meError}</Text> : null}
-        </View>
-
-        {isAdmin ? (
-          <View style={styles.bottomRow}>
-            <Pressable style={[styles.signOut, styles.adminBtn]} onPress={() => router.push("/admin")}>
-              <Text style={styles.signOutText}>🛠 Admin</Text>
-            </Pressable>
-          </View>
-        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
