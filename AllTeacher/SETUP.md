@@ -694,3 +694,71 @@ Complete visual language swap across the entire iOS app — from dark-purple gra
 
 #### No-action needed
 All changes are pure style/layout. No API changes, no database migrations, no new npm packages. Run `npx expo start` as usual.
+
+---
+
+### Account management menu — avatar ActionSheet (2026-05-06)
+
+All account actions consolidated into a native iOS `ActionSheetIOS` triggered by tapping the user's avatar (top-right of the Home screen). Replaces the standalone "Sign out" + "Delete account" buttons that were scattered at the bottom of the screen.
+
+**Menu options:**
+- **Manage Subscription** — navigates to `/subscription`
+- **Sign Out** — signs out immediately
+- **Delete Account** (destructive) — double-confirms via two `Alert` dialogs, then calls `DELETE /auth/me`, resets RevenueCat, and signs out
+
+**Code changes:**
+- `ios/app/index.tsx` — avatar `View` → `Pressable`; `ActionSheetIOS.showActionSheetWithOptions` call with all logic inlined in the handler; standalone sign-out `Pressable` and delete-account link removed from `bottomRow`
+- `backend/app/routes/auth.py` — `DELETE /auth/me` endpoint using `db.auth.admin.delete_user(g.user_id)`; Supabase cascades all related data
+- `ios/lib/api.ts` — `api.deleteAccount(token)` method
+- `website/support.html` — "How do I delete my account?" FAQ updated to say "tap your profile icon in the top right corner" instead of the old "scroll to the bottom" instruction
+
+No DB migration needed (ON DELETE CASCADE already in place from the initial schema).
+
+---
+
+### Session exit race condition fix (2026-05-06)
+
+**Bug**: if you started a session, exited the screen while it was on "Preparing your lesson…", then re-entered before the backend's Explainer LLM call completed, you'd get a 500 "Something went wrong" error on the second attempt.
+
+**Root cause**: the iOS component's `generationStarted` ref is destroyed on unmount. If the user returned before the first LLM call finished, the new component would call `POST /curriculum/<id>/lessons` again. Both concurrent requests passed the "existing row?" check with no result, both ran the Explainer, and the second to reach the DB INSERT hit the `lessons_curriculum_week_module_uniq` unique constraint → Supabase threw an error → 500.
+
+**Fix** (`backend/app/agents/orchestrator/_lessons.py`): wrapped the INSERT in a try/except. On a constraint collision, the code re-queries for the row the winning request already wrote and returns it — same content, no error. Zero change to the happy (single-request) path.
+
+No DB migration, no iOS changes needed.
+
+---
+
+### PostHog analytics (2026-05-06)
+
+Product analytics added to the iOS app via `posthog-react-native`. Gives the admin visibility into app installs, device info (model, iOS version, app version), screen funnels, and key learning events — all from a free PostHog Cloud account.
+
+**What's auto-captured** (zero instrumentation): every screen view (`$screen_view`), app open / background, device model, OS version, app build/version, locale, timezone.
+
+**Custom events:**
+
+| Event | When fired | Key properties |
+|-------|-----------|----------------|
+| `curriculum_created` | User submits a new goal | `curriculum_id`, `native_language` |
+| `session_started` | Bootstrap resolves, session is ready | `curriculum_id`, `week_id`, `module_count`, `resume` |
+| `lesson_viewed` | User taps "Start exercises →" | `curriculum_id`, `week_id`, `module_index`, `concept_title` |
+| `exercise_submitted` | Evaluator result applied | `exercise_type`, `score`, `verdict`, `is_bonus` |
+| `session_completed` | User reaches the Finished screen | `curriculum_id`, `exercises_total`, `avg_score` |
+
+**User identity**: on sign-in, PostHog is called with `identify(supabase_user_id, { email })` so every event ties to a person record in the PostHog People view. On sign-out, `posthog.reset()` clears the identity.
+
+**Code changes:**
+- `ios/lib/posthog.ts` — PostHog singleton (new file)
+- `ios/app/_layout.tsx` — `PostHogProvider` wraps the app root; `usePostHog()` + `identify` / `reset` wired into the `Gate` component alongside the existing RevenueCat identity sync
+- `ios/app/curriculum/new.tsx` — `curriculum_created` event after successful API call
+- `ios/app/curriculum/session.tsx` — `session_started`, `lesson_viewed`, `exercise_submitted` (inside `applyFinal`), `session_completed` events
+- `ios/package.json` — `posthog-react-native@^3.3.5`, `expo-application@~5.9.0`, `expo-device@~6.0.2`, `expo-file-system@~17.0.1` added
+- `ios/.env` — `EXPO_PUBLIC_POSTHOG_KEY=` placeholder added
+
+**Setup steps (one-time):**
+
+1. Sign up free at <https://posthog.com> → create a project
+2. **Project Settings → Project API key** → copy the `phc_…` key
+3. Paste it into `ios/.env` as `EXPO_PUBLIC_POSTHOG_KEY=phc_…`
+4. Add the same key to the EAS dashboard (under the `ios` environment variables) so production builds have it
+5. Run `cd ios && npm install`
+6. Push to `main` — the pipeline deploys automatically

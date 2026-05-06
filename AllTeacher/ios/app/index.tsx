@@ -19,9 +19,12 @@ import { useRouter } from "expo-router";
 import {
   api,
   BASE_URL,
+  type ActivityDay,
   type CurriculumListItem,
+  type DashboardSummary,
   type HealthResponse,
   type Subscription,
+  type StreakSummary,
 } from "@/lib/api";
 import { useAuth, useAdmin } from "@/lib/auth";
 import { resetUser } from "@/lib/revenuecat";
@@ -65,11 +68,13 @@ export default function Home() {
   const [curricula, setCurricula] = useState<CurriculumListItem[] | null>(null);
   const [curriculaError, setCurriculaError] = useState<string | null>(null);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [dashboard, setDashboard] = useState<DashboardSummary | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const userId = user?.id ?? session?.user?.id;
   const ckCurricula = userId ? `home:${userId}:curricula` : null;
   const ckSubscription = userId ? `home:${userId}:subscription` : null;
+  const ckDashboard = userId ? `home:${userId}:dashboard` : null;
 
   useEffect(() => {
     if (!session?.access_token || !userId) return;
@@ -96,8 +101,13 @@ export default function Home() {
         const cached = await cacheGet<Subscription>(ckSubscription);
         if (!cancelled && cached) setSubscription(cached);
       }
+      if (ckDashboard) {
+        const cached = await cacheGet<DashboardSummary>(ckDashboard);
+        if (!cancelled && cached) setDashboard(cached);
+      }
       const hasCurriculaCache = ckCurricula ? !!(await cacheGet(ckCurricula)) : false;
       if (!hasCurriculaCache) await fetchCurricula(token, false);
+      await fetchDashboard(token);
     })();
 
     return () => { cancelled = true; };
@@ -129,12 +139,24 @@ export default function Home() {
     [ckSubscription],
   );
 
+  const fetchDashboard = useCallback(
+    async (token: string) => {
+      try {
+        const d = await api.getDashboard(token);
+        setDashboard(d);
+        if (ckDashboard) await cacheSet(ckDashboard, d);
+      } catch { /* non-fatal — streak just won't show */ }
+    },
+    [ckDashboard],
+  );
+
   const onRefresh = useCallback(async () => {
     if (!session?.access_token) return;
     setRefreshing(true);
     await Promise.all([
       fetchCurricula(session.access_token, true),
       fetchSubscription(session.access_token),
+      fetchDashboard(session.access_token),
     ]);
     setRefreshing(false);
   }, [session?.access_token, fetchCurricula, fetchSubscription]);
@@ -173,8 +195,26 @@ export default function Home() {
   const firstName = (user?.email?.split("@")[0] ?? "").replace(/[^a-zA-Z]/g, "") || "there";
   const dayName = new Date().toLocaleDateString("en-US", { weekday: "long" });
   const todayDow = new Date().getDay(); // 0=Sun
-  // Derive a rough streak number from active curricula (visual only — real streak logic is backend)
-  const streakDays = curricula && curricula.length > 0 ? 7 : 0;
+
+  // Real streak from the backend dashboard.
+  const streak = dashboard?.streak ?? null;
+  const streakDays = streak?.current_days ?? 0;
+
+  // Build a set of active date strings for fast lookup, then compute
+  // whether each day of the current week (Sun=0 … Sat=6) had activity.
+  const activeDates = new Set(
+    (dashboard?.activity ?? []).filter((d) => d.active).map((d) => d.date),
+  );
+  const today = new Date();
+  const sundayOfWeek = new Date(today);
+  sundayOfWeek.setDate(today.getDate() - todayDow);
+  const isDayActive = (dow: number): boolean => {
+    if (dow > todayDow) return false; // future day this week
+    const d = new Date(sundayOfWeek);
+    d.setDate(sundayOfWeek.getDate() + dow);
+    return activeDates.has(d.toISOString().slice(0, 10));
+  };
+
   const activeCurriculum = curricula && curricula.length > 0 ? curricula[0] : null;
 
   return (
@@ -271,19 +311,28 @@ export default function Home() {
               </View>
               <View style={styles.streakInfo}>
                 <Text style={styles.streakTitle}>day streak.</Text>
-                <Text style={styles.streakSub}>Keep it going — you're on a roll.</Text>
+                <Text style={styles.streakSub}>
+                  {streak && streak.best_days > streakDays
+                    ? `Best: ${streak.best_days} days — keep going!`
+                    : "Keep it going — you're on a roll."}
+                </Text>
               </View>
             </View>
-            {/* Day dots */}
+            {/* Day dots — real activity for each day of the current week */}
             <View style={styles.streakDots}>
               {DAYS.map((d, i) => {
-                const done = i < 5;
+                const done = isDayActive(i);
+                const isFuture = i > todayDow;
                 return (
                   <View key={i} style={styles.streakDotWrap}>
-                    <View style={[styles.streakDotBox, done ? styles.streakDotFilled : styles.streakDotEmpty]}>
+                    <View style={[
+                      styles.streakDotBox,
+                      done ? styles.streakDotFilled : styles.streakDotEmpty,
+                      isFuture && { opacity: 0.35 },
+                    ]}>
                       {done ? <Text style={styles.streakDotText}>✓</Text> : null}
                     </View>
-                    <Text style={styles.streakDotLabel}>{d}</Text>
+                    <Text style={[styles.streakDotLabel, isFuture && { opacity: 0.35 }]}>{d}</Text>
                   </View>
                 );
               })}
