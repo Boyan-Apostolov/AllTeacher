@@ -23,7 +23,18 @@
         "backgroundColor": "#FF6B3D"
       }
     },
-    "plugins": ["expo-router", "expo-apple-authentication"],
+    "plugins": [
+      "expo-router",
+      "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#FF6B3D",
+          "sounds": []
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },

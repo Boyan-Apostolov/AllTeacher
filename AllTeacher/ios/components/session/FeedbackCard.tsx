@@ -172,8 +172,8 @@ export function FeedbackCard({
         ) : null}
       </Text>
       {shownGap.length > 0 ? (
-        <View style={styles.block}>
-          <Text style={styles.label}>Where it fell short</Text>
+        <View style={styles.gapBlock}>
+          <Text style={styles.gapLabel}>💡 Why it was wrong</Text>
           <Text style={styles.body}>
             {shownGap}
             {isStreaming ? <StreamingCaret color={tone.fg} /> : null}

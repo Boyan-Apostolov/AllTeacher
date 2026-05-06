@@ -770,6 +770,7 @@ export const api = {
       method: "DELETE",
       headers: authHeaders(token),
     }),
+
 };
 
 // --- SSE plumbing ---------------------------------------------------------

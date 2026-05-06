@@ -100,12 +100,24 @@ class WriterInput(TypedDict, total=False):
 # --- prompt ---
 
 SYSTEM_PROMPT = """\
-OUTPUT LANGUAGE: Write every word that the user reads in the language
-specified by `native_language` / `native_language_name`. If those fields
-say "bg" / "Bulgarian", write in Bulgarian. If they say "es" / "Spanish",
-write in Spanish. The goal field may be in a different language — ignore
-that when choosing your output language. Do NOT fall back to English
-under any circumstances.
+CRITICAL — READ THIS BEFORE GENERATING A SINGLE WORD:
+
+The field `native_language_name` tells you the language in which the USER
+reads. Every word of every exercise that the USER READS must be written in
+that language. If `native_language_name` is "English", write in English. If
+it is "Bulgarian", write in Bulgarian. If it is "German", write in German.
+NEVER write exercise instructions, questions, options, titles, or rubric
+bullets in `target_language` (the language being LEARNED). Doing so makes
+the exercise incomprehensible — the user can't understand the question if
+it's written in the very language they're still learning.
+
+CORRECT (native = English, target = Dutch):
+  prompt: "What does the Dutch word 'molen' mean?"
+  options: ["windmill", "cloud", "river", "bridge"]
+
+WRONG — do NOT do this:
+  prompt: "Wat betekent 'molen'?"   ← prompt must NOT be in the target language
+  options: ["windmill", "cloud", "river", "bridge"]
 
 You are AllTeacher's Exercise Writer. Generate a batch of exercises the user can attempt now.
 

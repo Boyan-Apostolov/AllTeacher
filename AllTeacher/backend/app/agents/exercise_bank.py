@@ -36,11 +36,14 @@ def find_first_session(
     domain: str,
     level: str,
     target_language: str | None,
+    native_language: str,
     count: int,
 ) -> list[dict[str, Any]]:
     """Return up to `count` canonical first-session bank rows for the given
-    (domain, level, target_language). Ordered by `created_at` so the same
-    set of users always gets the same first session (stable ordering)."""
+    (domain, level, target_language, native_language). Ordered by `created_at`
+    so the same set of users always gets the same first session (stable ordering).
+    native_language is part of the key so an English user learning Dutch never
+    gets exercises whose questions were written for a German user learning Dutch."""
     if not domain or not level or count <= 0:
         return []
 
@@ -50,6 +53,7 @@ def find_first_session(
         .eq("is_first_session", True)
         .eq("domain", domain)
         .eq("level", level)
+        .eq("native_language", native_language or "en")
         .order("created_at")
         .limit(count)
     )
@@ -67,6 +71,7 @@ def find_for_week(
     domain: str,
     level: str,
     target_language: str | None,
+    native_language: str,
     week_number: int,
     weak_areas: Iterable[str],
     count: int,
@@ -75,6 +80,9 @@ def find_for_week(
     overlap with `weak_areas`. We over-fetch then sort in Python so we can
     rank by overlap size — Supabase's REST surface doesn't expose the
     array `&&` cardinality directly.
+
+    native_language is part of the key so exercises with questions written in
+    one language are never served to a user whose native language differs.
 
     Ranking:
       1. Highest weak_area overlap with the user's recent struggles.
@@ -89,6 +97,7 @@ def find_for_week(
         .eq("is_first_session", False)
         .eq("domain", domain)
         .eq("level", level)
+        .eq("native_language", native_language or "en")
         .eq("week_number", int(week_number))
         # Over-fetch — we have to score in Python.
         .order("created_at", desc=True)
@@ -126,6 +135,7 @@ def save_batch(
     domain: str,
     level: str,
     target_language: str | None,
+    native_language: str,
     week_number: int | None,
     is_first_session: bool,
     weak_areas: list[str],
@@ -163,6 +173,7 @@ def save_batch(
                 "domain": domain,
                 "level": level,
                 "target_language": target_language,
+                "native_language": native_language or "en",
                 "week_number": bucket_week_number,
                 "is_first_session": bool(is_first_session),
                 "weak_areas": list(weak_areas or []),
@@ -183,6 +194,7 @@ def save_batch(
         domain=domain,
         level=level,
         target_language=target_language,
+        native_language=native_language,
         week_number=bucket_week_number,
         is_first_session=is_first_session,
         titles=titles,
@@ -207,6 +219,7 @@ def save_batch(
                 domain=domain,
                 level=level,
                 target_language=target_language,
+                native_language=native_language,
                 week_number=bucket_week_number,
                 is_first_session=is_first_session,
                 titles=titles,
@@ -221,6 +234,7 @@ def _fetch_bucket_rows(
     domain: str,
     level: str,
     target_language: str | None,
+    native_language: str,
     week_number: int | None,
     is_first_session: bool,
     titles: list[str],
@@ -234,6 +248,7 @@ def _fetch_bucket_rows(
         .select("*")
         .eq("domain", domain)
         .eq("level", level)
+        .eq("native_language", native_language or "en")
         .eq("is_first_session", bool(is_first_session))
         .in_("title", titles)
     )

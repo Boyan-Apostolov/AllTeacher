@@ -158,6 +158,7 @@ class _ExercisesMixin:
                 domain=domain,
                 level=level,
                 target_language=target_language,
+                native_language=_native_lang_code,
                 count=count,
             )
         else:
@@ -166,6 +167,7 @@ class _ExercisesMixin:
                 domain=domain,
                 level=level,
                 target_language=target_language,
+                native_language=_native_lang_code,
                 week_number=week_number,
                 weak_areas=recent_weak_areas,
                 count=count,
@@ -291,6 +293,7 @@ class _ExercisesMixin:
                     domain=domain,
                     level=level,
                     target_language=target_language,
+                    native_language=_native_lang_code,
                     week_number=None if is_first_session else week_number,
                     is_first_session=is_first_session,
                     weak_areas=(

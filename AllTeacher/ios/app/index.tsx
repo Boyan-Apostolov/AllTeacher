@@ -29,6 +29,7 @@ import { LoadingBlock, MessageBox, PrimaryCta } from "@/components/ui";
 import { Sticker } from "@/components/ui/Sticker";
 import { Spark } from "@/components/ui/Spark";
 import { colors, spacing, type } from "@/lib/theme";
+import { requestNotificationPermission } from "@/lib/notifications";
 
 import { homeStyles as styles } from "./index.styles";
 
@@ -215,6 +216,7 @@ export default function Home() {
             onPress={() => {
               const options = [
                 "Manage Subscription",
+                "Set Reminder",
                 "Sign Out",
                 "Delete Account",
                 "Cancel",
@@ -222,16 +224,18 @@ export default function Home() {
               ActionSheetIOS.showActionSheetWithOptions(
                 {
                   options,
-                  cancelButtonIndex: 3,
-                  destructiveButtonIndex: 2,
+                  cancelButtonIndex: 4,
+                  destructiveButtonIndex: 3,
                   title: user?.email ?? undefined,
                 },
                 (buttonIndex) => {
                   if (buttonIndex === 0) {
                     router.push("/subscription");
                   } else if (buttonIndex === 1) {
-                    signOut();
+                    router.push("/reminder");
                   } else if (buttonIndex === 2) {
+                    signOut();
+                  } else if (buttonIndex === 3) {
                     Alert.alert(
                       "Delete Account",
                       "This will permanently delete your account and all your curricula, progress, and subscription data. This cannot be undone.",

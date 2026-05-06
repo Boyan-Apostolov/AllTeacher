@@ -48,6 +48,26 @@ export const feedbackCardStyles = StyleSheet.create({
     borderTopColor: "rgba(26,20,16,0.12)",
     gap: 4,
   },
+  // Gap block — "why you got it wrong" callout. Amber left-border so it
+  // stands out from the surrounding feedback text.
+  gapBlock: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: colors.amber,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.amber,
+    backgroundColor: colors.amberSoft,
+    gap: 4,
+  },
+  gapLabel: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: colors.amber,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
   label: {
     fontSize: 11,
     fontWeight: "900",

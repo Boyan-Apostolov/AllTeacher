@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import { BottomTabBar } from "@/components/ui";
 import { configureRevenueCat, identifyUser, resetUser } from "@/lib/revenuecat";
 import { posthog } from "@/lib/posthog";
+import { requestNotificationPermission, scheduleReminder, isReminderEnabled } from "@/lib/notifications";
 
 // Routes that should show the persistent bottom tab bar
 const TAB_ROUTES = new Set(["/", "/progress", "/vocabulary", "/subscription", "/admin"]);
@@ -72,6 +73,16 @@ function Gate() {
 export default function RootLayout() {
   useEffect(() => {
     configureRevenueCat();
+    // Silently ask for notification permission on first launch.
+    // If already granted, this is a no-op. If a reminder was previously
+    // scheduled, re-schedule it so it survives app reinstalls.
+    (async () => {
+      const granted = await requestNotificationPermission();
+      if (granted) {
+        const enabled = await isReminderEnabled();
+        if (enabled) await scheduleReminder(0);
+      }
+    })();
   }, []);
 
   return (

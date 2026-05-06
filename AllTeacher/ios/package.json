@@ -38,7 +38,10 @@
     "posthog-react-native": "^3.3.5",
     "expo-application": "~5.9.0",
     "expo-device": "~6.0.2",
-    "expo-file-system": "~17.0.1"
+    "expo-file-system": "~17.0.1",
+    "expo-sharing": "~11.10.0",
+    "expo-print": "~13.0.1",
+    "expo-notifications": "~0.28.0"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

@@ -83,7 +83,7 @@ TAG FORMAT — `weak_areas` and `strengths` entries are short human-readable phr
 CANONICAL TAGS — if `existing_weak_areas` or `existing_strengths` are provided, REUSE them verbatim (exact same string, same script) when a tag in your output would name the same theme. Do not coin near-variants like "time management" vs "time management strategies" vs "gestión del tiempo" — pick the existing one. Only introduce a new tag when the theme is genuinely new. IMPORTANT: only reuse an existing tag if it is already written in `native_language` — if an existing tag is in a different language, ignore it and write a fresh tag in `native_language` instead.
 
 Scoring by type:
-- multiple_choice: submission.choice_index == exercise.correct_index → score=1.0 verdict="correct"; else 0.0 "incorrect". Briefly explain why in feedback.
+- multiple_choice: submission.choice_index == exercise.correct_index → score=1.0 verdict="correct"; else 0.0 "incorrect". In `feedback`, confirm the correct answer warmly. For incorrect: ALSO fill `gap` with exactly one sentence explaining why the chosen option was wrong or how it differs from the correct answer — never leave `gap` empty for an incorrect multiple_choice answer.
 - flashcard: trust submission.self_rating. easy→1.0, medium→0.6, hard→0.2; verdict="reviewed". Give one memory hook in feedback.
 - short_answer: compare submission.text to exercise.expected, lenient on case/whitespace/punctuation/synonyms. Meaning-equivalent → 1.0 "correct". Right idea, wrong detail → 0.4–0.8 "partial". Wrong/empty → 0.0 "incorrect". Use rubric if present (longer prompts may use rubric+expected_length to set scope).
 
