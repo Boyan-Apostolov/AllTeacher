@@ -1,14 +1,22 @@
-"""Curriculum routes.
+"""Curriculum routes — thin HTTP layer over the master Orchestrator.
 
-POST /curriculum                        create curriculum + kick off Assessor
-GET  /curriculum                        list user's curricula
-GET  /curriculum/<id>                   fetch curriculum state
-POST /curriculum/<id>/assessor          submit an answer, get next Q or final summary
+Routes never call subagents directly. They translate HTTP into orchestrator
+intents, and translate orchestrator results / errors back into HTTP. Domain
+logic lives in `app.agents.orchestrator`.
+
+POST   /curriculum                        create curriculum + kick off Assessor
+GET    /curriculum                        list user's curricula
+GET    /curriculum/<id>                   fetch curriculum state
+DELETE /curriculum/<id>                   delete curriculum
+POST   /curriculum/<id>/assessor          submit an answer, get next Q or summary
+POST   /curriculum/<id>/plan              run Planner, persist plan + week rows
+GET    /curriculum/<id>/weeks             list curriculum_weeks rows
 """
 from flask import Blueprint, jsonify, g, request
+
 from app.middleware.auth import require_auth
 from app.db.supabase import service_client
-from app.agents import assessor
+from app.agents.orchestrator import Orchestrator, OrchestratorError
 
 bp = Blueprint("curriculum", __name__, url_prefix="/curriculum")
 
@@ -19,6 +27,16 @@ def _db():
         raise RuntimeError("Supabase service client not configured")
     return c
 
+
+def _orch() -> Orchestrator:
+    return Orchestrator(_db())
+
+
+def _orch_error(e: OrchestratorError):
+    return jsonify({"error": e.code, "detail": str(e)}), e.status
+
+
+# ---------- agent-driven endpoints (delegate to Orchestrator) ----------
 
 @bp.post("")
 @require_auth
@@ -32,31 +50,15 @@ def create():
     if not goal:
         return jsonify({"error": "goal_required"}), 400
 
-    db = _db()
-
-    # Create row.
-    insert = (
-        db.table("curricula")
-        .insert({
-            "user_id": g.user_id,
-            "topic": goal[:200],       # placeholder — Planner will set final topic/domain
-            "goal": goal,
-            "native_language": native_language,
-            "assessor_status": "in_progress",
-            "assessment_json": {"transcript": []},
-        })
-        .execute()
-    )
-    row = insert.data[0]
-
-    # First Assessor step.
-    result = assessor.step(
-        goal=goal,
-        native_language=native_language,
-        transcript=[],
-    )
-
-    return _apply_assessor_step(db, row["id"], goal, native_language, [], result), 200
+    try:
+        payload = _orch().start_curriculum(
+            user_id=g.user_id,
+            goal=goal,
+            native_language=native_language,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
 
 
 @bp.post("/<curriculum_id>/assessor")
@@ -70,42 +72,34 @@ def assessor_answer(curriculum_id):
     if not answer:
         return jsonify({"error": "answer_required"}), 400
 
-    db = _db()
-    row = (
-        db.table("curricula")
-        .select("*")
-        .eq("id", curriculum_id)
-        .eq("user_id", g.user_id)
-        .single()
-        .execute()
-    ).data
-    if not row:
-        return jsonify({"error": "not_found"}), 404
-    if row.get("assessor_status") == "complete":
-        return jsonify({"error": "assessor_already_complete"}), 409
+    try:
+        payload = _orch().submit_assessor_answer(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
+            answer=answer,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
 
-    transcript = (row.get("assessment_json") or {}).get("transcript", [])
-    if not transcript or transcript[-1].get("answer") is not None:
-        return jsonify({"error": "no_pending_question"}), 409
 
-    # Fill the pending question with the user's answer.
-    transcript[-1]["answer"] = answer
+@bp.post("/<curriculum_id>/plan")
+@require_auth
+def generate_plan(curriculum_id):
+    """Run the Planner against the persisted Assessor summary.
+    Returns: {id, plan: {...top-level...}, weeks: [{...per-week...}]}
+    """
+    try:
+        payload = _orch().generate_plan(
+            user_id=g.user_id,
+            curriculum_id=curriculum_id,
+        )
+    except OrchestratorError as e:
+        return _orch_error(e)
+    return jsonify(payload), 200
 
-    result = assessor.step(
-        goal=row.get("goal") or row.get("topic") or "",
-        native_language=row.get("native_language") or "en",
-        transcript=transcript,
-    )
 
-    return _apply_assessor_step(
-        db,
-        curriculum_id,
-        row.get("goal") or row.get("topic") or "",
-        row.get("native_language") or "en",
-        transcript,
-        result,
-    ), 200
-
+# ---------- read-only / housekeeping endpoints (direct DB) ----------
 
 @bp.get("")
 @require_auth
@@ -113,7 +107,10 @@ def list_curricula():
     db = _db()
     rows = (
         db.table("curricula")
-        .select("id,topic,goal,domain,status,assessor_status,level,created_at")
+        .select(
+            "id,topic,goal,domain,status,assessor_status,planner_status,"
+            "level,created_at"
+        )
         .eq("user_id", g.user_id)
         .order("created_at", desc=True)
         .execute()
@@ -156,39 +153,26 @@ def delete(curriculum_id):
     return jsonify({"ok": True, "id": curriculum_id})
 
 
-# --- helpers ---
+@bp.get("/<curriculum_id>/weeks")
+@require_auth
+def list_weeks(curriculum_id):
+    db = _db()
+    own = (
+        db.table("curricula")
+        .select("id")
+        .eq("id", curriculum_id)
+        .eq("user_id", g.user_id)
+        .single()
+        .execute()
+    ).data
+    if not own:
+        return jsonify({"error": "not_found"}), 404
 
-def _apply_assessor_step(db, curriculum_id, goal, native_language, transcript, result):
-    """Persist the Assessor's response + return the API payload."""
-    kind = result.get("kind")
-
-    if kind == "question":
-        q = result.get("question") or {}
-        text = q.get("text") or ""
-        options = q.get("options") or []
-        transcript = transcript + [{"question": text, "options": options, "answer": None}]
-        db.table("curricula").update({
-            "assessment_json": {"transcript": transcript},
-            "assessor_status": "in_progress",
-        }).eq("id", curriculum_id).execute()
-        return jsonify({
-            "id": curriculum_id,
-            "next": {"question": text, "options": options},
-            "complete": None,
-        })
-
-    if kind == "complete":
-        summary = result.get("summary") or {}
-        db.table("curricula").update({
-            "assessment_json": {"transcript": transcript, "summary": summary},
-            "assessor_status": "complete",
-            "domain": summary.get("domain"),
-            "level": summary.get("level"),
-            "learning_style": summary.get("learning_style"),
-            "time_budget_mins_per_day": summary.get("time_budget_mins_per_day"),
-            "target_language": summary.get("target_language"),
-        }).eq("id", curriculum_id).execute()
-        return jsonify({"id": curriculum_id, "next": None, "complete": summary})
-
-    # Model returned something unexpected — surface it.
-    return jsonify({"error": "bad_assessor_response", "raw": result}), 500
+    rows = (
+        db.table("curriculum_weeks")
+        .select("id,week_number,plan_json,status")
+        .eq("curriculum_id", curriculum_id)
+        .order("week_number")
+        .execute()
+    ).data
+    return jsonify({"weeks": rows or []})

@@ -146,10 +146,12 @@ export default function Home() {
                     {c.goal || c.topic || "Untitled"}
                   </Text>
                   <Text style={styles.curriculumMeta}>
-                    {c.assessor_status === "complete"
-                      ? `Assessed${c.level ? ` · ${c.level}` : ""}${
+                    {c.planner_status === "complete"
+                      ? `Plan ready${c.level ? ` · ${c.level}` : ""}${
                           c.domain ? ` · ${c.domain}` : ""
                         }`
+                      : c.assessor_status === "complete"
+                      ? "Ready to plan"
                       : c.assessor_status === "in_progress"
                       ? "Assessment in progress"
                       : "New"}

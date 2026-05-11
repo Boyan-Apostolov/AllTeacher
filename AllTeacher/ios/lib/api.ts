@@ -45,8 +45,51 @@ export type CurriculumListItem = {
   domain: string | null;
   status: string | null;
   assessor_status: string | null;
+  planner_status: string | null;
   level: string | null;
   created_at: string;
+};
+
+export type PlanPhase = {
+  name: string;
+  description: string;
+  week_numbers: number[];
+};
+
+export type PlanModule = {
+  title: string;
+  kind: string;
+  description: string;
+};
+
+export type PlanWeek = {
+  week_number: number;
+  title: string;
+  objective: string;
+  modules: PlanModule[];
+  milestone: string;
+  daily_minutes: number;
+  exercise_focus: string[];
+};
+
+export type PlanOverview = {
+  title: string;
+  summary_for_user: string;
+  total_weeks: number;
+  phases: PlanPhase[];
+};
+
+export type PlanResponse = {
+  id: string;
+  plan: PlanOverview;
+  weeks: PlanWeek[];
+};
+
+export type WeekRow = {
+  id: string;
+  week_number: number;
+  plan_json: PlanWeek;
+  status: string;
 };
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -107,6 +150,17 @@ export const api = {
   deleteCurriculum: (token: string, curriculumId: string) =>
     request<{ ok: boolean; id: string }>(`/curriculum/${curriculumId}`, {
       method: "DELETE",
+      headers: authHeaders(token),
+    }),
+
+  generatePlan: (token: string, curriculumId: string) =>
+    request<PlanResponse>(`/curriculum/${curriculumId}/plan`, {
+      method: "POST",
+      headers: authHeaders(token),
+    }),
+
+  getWeeks: (token: string, curriculumId: string) =>
+    request<{ weeks: WeekRow[] }>(`/curriculum/${curriculumId}/weeks`, {
       headers: authHeaders(token),
     }),
 };

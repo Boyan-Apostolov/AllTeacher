@@ -168,11 +168,13 @@ create trigger on_auth_user_created
 
 ### Migrations
 
-After the initial schema above, run any migrations in `backend/db/migrations/` in order. They're idempotent (`add column if not exists`), safe to re-run.
+After the initial schema above, run every file in `backend/db/migrations/` in order. They're idempotent (`add column if not exists`, etc.) and safe to re-run.
 
 Currently:
 
 - `002_curriculum_assessment.sql` — adds Assessor output columns (`goal`, `native_language`, `target_language`, `level`, `learning_style`, `time_budget_mins_per_week`, `assessment_json`, `assessor_status`) to `curricula`.
+- `003_time_budget_per_day.sql` — renames `time_budget_mins_per_week` → `time_budget_mins_per_day` (the Assessor now asks per-day, not per-week).
+- `004_planner.sql` — adds `plan_json` (top-level overview: title, summary, phases, total_weeks) and `planner_status` to `curricula`. Per-week detail goes into `curriculum_weeks.plan_json`.
 
 For each file: open **SQL Editor → New query**, paste the contents, click **Run**.
 
@@ -273,17 +275,31 @@ iOS Simulator (Expo) ──/health──▶ Flask (:8000) ──▶ Config check
                         ◀──── { status: "ok", configured: {...} }
 ```
 
+### Architecture: master Orchestrator
+
+All agent calls go through `backend/app/agents/orchestrator.py`. Routes are thin — they translate HTTP into orchestrator intents (`start_curriculum`, `submit_assessor_answer`, `generate_plan`, …) and translate orchestrator results / errors back into JSON. Subagents (`assessor.py`, `planner.py`, future `evaluator.py`, `tracker.py`, `adapter.py`) stay pure: structured input → structured output, no DB or HTTP.
+
+```
+iOS  ──HTTP──▶  Flask route  ──intent──▶  Orchestrator  ──▶  Subagent (Assessor / Planner / …)
+                                            │  ▲
+                                            ▼  │
+                                       Supabase Postgres
+```
+
+Add a new subagent by dropping a new module under `app/agents/` and wiring it into the orchestrator — never call subagents from routes directly.
+
 ### What to try
 
 - Sign up / log in from the iOS app — the **Signed in as …** line + the green **/auth/me** card prove the Supabase JWT round-trips to Flask.
-- Tap **Start new curriculum**, type any goal in any language. The Assessor asks ≤ 8 MCQs in your native language and ends with a structured summary (domain / level / learning style / time budget / target language).
-- Back on Home, the curriculum appears in **Your curricula** with its status.
+- Tap **Start new curriculum**, type any goal in any language. The Assessor asks 8–10 MCQs in your native language and ends with a structured summary (domain / level / learning style / time per day / target language).
+- After the assessment, tap **Generate my plan**. The Planner returns a week-by-week curriculum (title, summary, phases, weeks with modules / objective / milestone / daily minutes), persisted to `curricula.plan_json` + `curriculum_weeks`.
+- Back on Home, the curriculum row shows **Plan ready** and reopens straight into the plan view.
 
 Next, in roughly MVP order:
 
 1. ~~Supabase Auth — email/password signup/login in `ios/app/(auth)/` that writes to `public.users`.~~ ✅
-2. ~~Assessor agent — first adaptive quiz.~~ ✅
-3. Planner agent — turn the Assessor summary into a week-by-week plan in `curriculum_weeks`.
+2. ~~Assessor agent — adaptive quiz, structured summary in native language.~~ ✅
+3. ~~Planner agent — turn the Assessor summary into a week-by-week plan in `curriculum_weeks`, dispatched by the master Orchestrator.~~ ✅
 4. Exercise Writer + Evaluator — sessions screen with streaming responses via SSE.
 5. Tracker + Adapter — progress dashboard.
 6. RevenueCat → tier enforcement.
