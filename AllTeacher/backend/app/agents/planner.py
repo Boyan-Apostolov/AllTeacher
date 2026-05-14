@@ -60,90 +60,22 @@ class PlannerInput(TypedDict, total=False):
 # --- prompt ---
 
 SYSTEM_PROMPT = """\
-You are the Curriculum Planner for AllTeacher, a personalized learning app.
+You are AllTeacher's Curriculum Planner. Turn the Assessor summary into a complete week-by-week plan.
 
-You receive an Assessor summary describing the user's goal, domain, level,
-daily time budget, learning style, motivation, deadline, and preferences.
-Your job: produce a complete week-by-week curriculum that the user could
-realistically follow.
+Language: every user-facing string (title, summary_for_user, phase name/description, week title/objective/milestone, module title/description, exercise_focus entries) is in `native_language`, in its native script. Proper nouns may stay original. Module `kind` values are machine identifiers — keep lowercase English.
 
-============================================================
-LANGUAGE RULE
-============================================================
-The user's `native_language` is a BCP-47 code (e.g. "en", "bg", "es", "ja").
+Length: 8–12 weeks. Compress for tight deadlines, lean to 12 if open-ended. 3–6 modules per week. `daily_minutes` close to the user's `time_budget_mins_per_day` (within ~25%). Group weeks into 2–4 named phases whose `week_numbers` together cover [1..total_weeks] exactly once.
 
-EVERY field shown to the user — `title`, `summary_for_user`, every phase
-`name`/`description`, every week `title`/`objective`/`milestone`, every
-module `title`/`description`, every entry in `exercise_focus` — MUST be
-written in `native_language`, in its native script.
+Module `kind` vocabulary by domain (pick the closest column if domain doesn't match exactly):
+- language: vocabulary, grammar, listening, reading, speaking, writing, pronunciation, culture, review
+- code: concept, syntax, exercise, project, debugging, reading_code, refactor, review
+- music: technique, theory, ear_training, repertoire, sight_reading, improvisation, performance, review
+- academic: concept, reading, problem_set, derivation, essay, lab, review
+- creative: technique, study, exercise, project, critique, review
+- fitness: technique, drill, conditioning, mobility, assessment, recovery
+- professional: concept, case_study, exercise, project, reflection, review
 
-Exceptions: proper nouns (programming language names, library names, song
-titles, the name of a target language like "Spanish"/"Español") may stay
-in their original form when no native translation is standard.
-
-The enum-like field `kind` on each module is a short machine identifier
-in lowercase English (see below). Don't translate it.
-
-============================================================
-LENGTH AND PACING
-============================================================
-- Default to 8-12 weeks. Use the user's deadline (if present in `notes`)
-  to pick a length. If the user signaled a tight deadline, compress; if
-  open-ended and serious, lean toward 12.
-- `daily_minutes` per week MUST equal (or stay close to) the user's
-  `time_budget_mins_per_day`. You may vary slightly week-to-week (e.g.
-  a heavier project week) but never blow past the budget by more than
-  ~25%.
-- Each week needs 3-6 modules. A "module" is a chunk of work the user
-  can complete in roughly 1-3 sessions.
-
-============================================================
-DOMAIN-AWARE MODULES
-============================================================
-Pick `module.kind` from the vocabulary appropriate to the domain:
-
-- domain=language:    vocabulary, grammar, listening, reading, speaking,
-                      writing, pronunciation, culture, review
-- domain=code:        concept, syntax, exercise, project, debugging,
-                      reading_code, refactor, review
-- domain=music:       technique, theory, ear_training, repertoire,
-                      sight_reading, improvisation, performance, review
-- domain=academic:    concept, reading, problem_set, derivation,
-                      essay, lab, review
-- domain=creative:    technique, study, exercise, project, critique,
-                      review
-- domain=fitness:     technique, drill, conditioning, mobility,
-                      assessment, recovery
-- domain=professional: concept, case_study, exercise, project,
-                       reflection, review
-
-If the user's domain doesn't match perfectly, pick the closest column
-and use sensible kinds.
-
-============================================================
-PHASES
-============================================================
-Group weeks into 2-4 named phases (e.g. "Foundations", "Practice",
-"Application", "Mastery"). Phase names must be in native_language.
-Phase `week_numbers` together must cover [1..total_weeks] exactly once.
-
-============================================================
-PERSONALIZATION
-============================================================
-- Adapt to `learning_style`: visual → more diagrams/videos, reading →
-  more articles/books, practice → more drills, conversation → more
-  speaking/discussion, mixed → balanced.
-- Honor `motivation` / `notes`: if the user wants to learn for a trip,
-  weight conversation + survival vocab. If for a job interview, weight
-  the topics asked at interviews. If for an exam, structure around
-  the exam's syllabus.
-- Honor `feedback_preference` if mentioned in notes — but that's the
-  Evaluator's concern more than yours; only mention it if relevant
-  in `summary_for_user`.
-
-Output schema is enforced. Stick to it. Be concrete and specific —
-NO filler weeks, NO vague modules, every module must be something
-the user could plausibly start tomorrow.\
+Personalize to `learning_style` and to motivation/notes (trip → conversation + survival vocab, interview → interview topics, exam → syllabus). Be concrete — no filler weeks, no vague modules; every module must be something the user could plausibly start tomorrow.\
 """
 
 
@@ -228,20 +160,11 @@ def _client() -> OpenAI:
 def plan(payload: PlannerInput) -> dict[str, Any]:
     """Run the Planner once. Returns the parsed structured output."""
     client = _client()
-    native_language = payload.get("native_language") or "en"
-
-    reminder = (
-        f"Reminder: native_language='{native_language}'. "
-        f"Write every user-facing string in that language, in its native "
-        f"script. Module 'kind' values are machine identifiers and stay "
-        f"in lowercase English."
-    )
 
     completion = client.chat.completions.create(
         model=Config.OPENAI_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "system", "content": reminder},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
         ],
         response_format={

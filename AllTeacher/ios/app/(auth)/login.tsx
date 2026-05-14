@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -7,11 +8,12 @@ import {
   Text,
   TextInput,
   View,
-  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Link } from "expo-router";
 import { useAuth } from "@/lib/auth";
+import { Gradient } from "@/components/Gradient";
+import { colors, radii, shadow, spacing, type } from "@/lib/theme";
 
 export default function Login() {
   const { signIn } = useAuth();
@@ -19,13 +21,13 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [focused, setFocused] = useState<"email" | "password" | null>(null);
 
   const onSubmit = async () => {
     setError(null);
     setSubmitting(true);
     try {
       await signIn(email.trim(), password);
-      // Root layout effect handles redirect.
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -33,87 +35,214 @@ export default function Login() {
     }
   };
 
+  const canSubmit = !!email && !!password && !submitting;
+
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.flex}
-      >
-        <View style={styles.content}>
-          <Text style={styles.title}>Welcome back</Text>
-          <Text style={styles.subtitle}>Sign in to continue learning</Text>
+    <View style={styles.root}>
+      <Gradient
+        from={colors.brand}
+        via={colors.accent}
+        to="#ff9966"
+        angle={150}
+        style={styles.bgGradient}
+      />
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.flex}
+        >
+          <View style={styles.hero}>
+            <Text style={styles.eyebrow}>AllTeacher</Text>
+            <Text style={styles.heroTitle}>Welcome{"\n"}back ✨</Text>
+            <Text style={styles.heroSub}>Pick up where you left off.</Text>
+          </View>
 
-          <TextInput
-            style={styles.input}
-            placeholder="you@example.com"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            value={email}
-            onChangeText={setEmail}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            secureTextEntry
-            autoComplete="password"
-            textContentType="password"
-            value={password}
-            onChangeText={setPassword}
-          />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Sign in</Text>
+            <Text style={styles.cardSub}>Use the email you signed up with.</Text>
 
-          {error && <Text style={styles.error}>{error}</Text>}
+            <View style={styles.fields}>
+              <Field
+                label="Email"
+                placeholder="you@example.com"
+                value={email}
+                onChangeText={setEmail}
+                focused={focused === "email"}
+                onFocus={() => setFocused("email")}
+                onBlur={() => setFocused(null)}
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                textContentType="emailAddress"
+              />
+              <Field
+                label="Password"
+                placeholder="••••••••"
+                value={password}
+                onChangeText={setPassword}
+                focused={focused === "password"}
+                onFocus={() => setFocused("password")}
+                onBlur={() => setFocused(null)}
+                secureTextEntry
+                autoComplete="password"
+                textContentType="password"
+              />
+            </View>
 
-          <Pressable
-            style={[styles.button, submitting && styles.buttonDisabled]}
-            disabled={submitting || !email || !password}
-            onPress={onSubmit}
-          >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Sign in</Text>
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
             )}
-          </Pressable>
 
-          <Link href="/(auth)/signup" style={styles.footerLink}>
-            <Text style={styles.footer}>
-              No account? <Text style={styles.footerAccent}>Sign up</Text>
-            </Text>
-          </Link>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <Pressable
+              disabled={!canSubmit}
+              onPress={onSubmit}
+              style={({ pressed }) => [
+                styles.cta,
+                !canSubmit && styles.ctaDisabled,
+                pressed && canSubmit && styles.ctaPressed,
+              ]}
+            >
+              <Gradient
+                from={colors.brand}
+                to={colors.brandDeep}
+                angle={135}
+                style={styles.ctaGradient}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.textOnDark} />
+                ) : (
+                  <Text style={styles.ctaText}>Sign in →</Text>
+                )}
+              </Gradient>
+            </Pressable>
+
+            <Link href="/(auth)/signup" asChild>
+              <Pressable style={styles.footerLink}>
+                <Text style={styles.footer}>
+                  New here?{" "}
+                  <Text style={styles.footerAccent}>Create an account</Text>
+                </Text>
+              </Pressable>
+            </Link>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  focused,
+  ...rest
+}: React.ComponentProps<typeof TextInput> & { label: string; focused: boolean }) {
+  return (
+    <View>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        {...rest}
+        placeholderTextColor={colors.textFaint}
+        style={[styles.input, focused && styles.inputFocused]}
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
+  root: { flex: 1, backgroundColor: colors.bg },
+  bgGradient: { ...StyleSheet.absoluteFillObject, height: 360 },
+  safe: { flex: 1 },
   flex: { flex: 1 },
-  content: { flex: 1, padding: 24, justifyContent: "center", gap: 12 },
-  title: { fontSize: 32, fontWeight: "700" },
-  subtitle: { fontSize: 15, color: "#666", marginBottom: 16 },
-  input: {
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#e5e5e5",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+
+  hero: {
+    paddingHorizontal: spacing.xl,
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.xxl,
+  },
+  eyebrow: {
+    color: "rgba(255,255,255,0.85)",
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: 1.4,
+    textTransform: "uppercase",
+    marginBottom: spacing.sm,
+  },
+  heroTitle: {
+    fontSize: 40,
+    fontWeight: "900",
+    color: colors.textOnDark,
+    letterSpacing: -0.8,
+    lineHeight: 44,
+  },
+  heroSub: {
     fontSize: 16,
+    color: "rgba(255,255,255,0.9)",
+    marginTop: spacing.md,
   },
-  error: { color: "#c0392b", fontSize: 14 },
-  button: {
-    backgroundColor: "#111",
-    borderRadius: 10,
+
+  card: {
+    marginHorizontal: spacing.lg,
+    marginTop: "auto",
+    marginBottom: spacing.lg,
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radii.xl,
+    ...shadow.raised,
+  },
+  cardTitle: { ...type.h1 },
+  cardSub: { ...type.bodyMuted, marginTop: spacing.xs },
+  fields: { gap: spacing.md, marginTop: spacing.lg },
+
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    marginLeft: 4,
+  },
+  input: {
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1.5,
+    borderColor: "transparent",
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
     paddingVertical: 14,
-    alignItems: "center",
-    marginTop: 8,
+    fontSize: 16,
+    color: colors.text,
   },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: { color: "#fff", fontSize: 16, fontWeight: "600" },
-  footerLink: { marginTop: 16, alignSelf: "center" },
-  footer: { fontSize: 14, color: "#666" },
-  footerAccent: { color: "#111", fontWeight: "600" },
+  inputFocused: {
+    borderColor: colors.brand,
+    backgroundColor: colors.surface,
+  },
+
+  errorBox: {
+    marginTop: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radii.md,
+  },
+  errorText: { color: colors.danger, fontSize: 14, fontWeight: "600" },
+
+  cta: {
+    marginTop: spacing.lg,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+    ...shadow.card,
+  },
+  ctaGradient: {
+    paddingVertical: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaPressed: { transform: [{ scale: 0.98 }] },
+  ctaDisabled: { opacity: 0.5 },
+  ctaText: { color: colors.textOnDark, fontSize: 17, fontWeight: "800" },
+
+  footerLink: { marginTop: spacing.lg, alignSelf: "center" },
+  footer: { fontSize: 14, color: colors.textMuted },
+  footerAccent: { color: colors.brand, fontWeight: "700" },
 });

@@ -4,8 +4,8 @@
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
-    "ios": "expo start --ios",
-    "android": "expo start --android",
+    "ios": "expo run:ios",
+    "android": "expo run:android",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -15,6 +15,7 @@
     "expo": "~51.0.0",
     "expo-constants": "~16.0.0",
     "expo-font": "~12.0.0",
+    "expo-linear-gradient": "~13.0.2",
     "expo-linking": "~6.3.0",
     "expo-router": "~3.5.0",
     "expo-splash-screen": "~0.27.0",

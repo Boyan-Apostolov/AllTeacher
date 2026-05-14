@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
+
 import {
   api,
   BASE_URL,
@@ -17,6 +18,16 @@ import {
   type HealthResponse,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { colors, radii, shadow, spacing, type } from "@/lib/theme";
+import { Gradient } from "@/components/Gradient";
+
+const greetings = ["Hey", "Welcome back", "Ready to learn?"];
+
+function pickGreeting(seed: string) {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return greetings[h % greetings.length];
+}
 
 export default function Home() {
   const router = useRouter();
@@ -32,13 +43,10 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-
     api
       .health()
       .then((h) => !cancelled && setHealth(h))
       .catch((e: Error) => !cancelled && setHealthError(e.message));
-
-    // Prove the backend can verify our Supabase JWT.
     if (session?.access_token) {
       api
         .me(session.access_token)
@@ -49,13 +57,11 @@ export default function Home() {
           setMeError(e.message);
         });
     }
-
     return () => {
       cancelled = true;
     };
   }, [session?.access_token]);
 
-  // Refresh the curriculum list every time we come back to Home.
   useFocusEffect(
     useCallback(() => {
       if (!session?.access_token) return;
@@ -84,14 +90,12 @@ export default function Home() {
           text: "Remove",
           style: "destructive",
           onPress: async () => {
-            // Optimistic update.
             setCurricula((prev) =>
               prev ? prev.filter((x) => x.id !== c.id) : prev,
             );
             try {
               await api.deleteCurriculum(token, c.id);
             } catch (e) {
-              // Re-fetch on failure to restore truth.
               setCurriculaError((e as Error).message);
               try {
                 const res = await api.listCurricula(token);
@@ -106,120 +110,98 @@ export default function Home() {
     );
   };
 
+  const greeting = pickGreeting(user?.email ?? "x");
+  const firstName = user?.email?.split("@")[0] ?? "";
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>AllTeacher</Text>
-        <Text style={styles.subtitle}>Signed in as {user?.email}</Text>
-
-        <Pressable
-          style={styles.primary}
-          onPress={() => router.push("/curriculum/new")}
+        {/* Hero */}
+        <Gradient
+          from={colors.brand}
+          via={colors.accent}
+          to={colors.brandDeep}
+          angle={140}
+          style={styles.hero}
         >
-          <Text style={styles.primaryText}>Start new curriculum</Text>
-        </Pressable>
+          <Text style={styles.heroEyebrow}>AllTeacher</Text>
+          <Text style={styles.heroTitle}>
+            {greeting}, {firstName} 👋
+          </Text>
+          <Text style={styles.heroSubtitle}>
+            Pick up where you left off, or start something new.
+          </Text>
+          <Pressable
+            style={styles.heroCta}
+            onPress={() => router.push("/curriculum/new")}
+          >
+            <Text style={styles.heroCtaText}>+ Start something new</Text>
+          </Pressable>
+        </Gradient>
 
-        <View style={{ gap: 8 }}>
-          <Text style={styles.sectionHeader}>Your curricula</Text>
+        {/* Curricula */}
+        <View style={{ gap: spacing.sm }}>
+          <Text style={styles.sectionLabel}>Your curricula</Text>
+
           {curriculaError ? (
-            <View style={[styles.card, styles.cardError]}>
-              <Text style={styles.value}>{curriculaError}</Text>
+            <View style={[styles.card, styles.cardDanger]}>
+              <Text style={type.body}>{curriculaError}</Text>
             </View>
           ) : curricula === null ? (
             <View style={styles.card}>
-              <ActivityIndicator />
+              <ActivityIndicator color={colors.brand} />
             </View>
           ) : curricula.length === 0 ? (
-            <View style={styles.card}>
-              <Text style={styles.value}>
-                No curricula yet. Tap “Start new curriculum” to begin.
+            <View style={[styles.card, styles.emptyCard]}>
+              <Text style={styles.emptyEmoji}>🌱</Text>
+              <Text style={type.h3}>No curricula yet</Text>
+              <Text style={type.bodyMuted}>
+                Tell AllTeacher what you want to learn — anything from
+                conversational Italian to drumming or React. The Assessor
+                will tailor a plan to your level and the time you've got.
               </Text>
+              <Pressable
+                style={styles.emptyCta}
+                onPress={() => router.push("/curriculum/new")}
+              >
+                <Text style={styles.emptyCtaText}>Choose a goal →</Text>
+              </Pressable>
             </View>
           ) : (
             curricula.map((c) => (
-              <View key={c.id} style={styles.curriculumRow}>
-                <Pressable
-                  style={styles.curriculumBody}
-                  onPress={() => router.push(`/curriculum/${c.id}`)}
-                >
-                  <Text style={styles.curriculumTitle} numberOfLines={2}>
-                    {c.goal || c.topic || "Untitled"}
-                  </Text>
-                  <Text style={styles.curriculumMeta}>
-                    {c.planner_status === "complete"
-                      ? `Plan ready${c.level ? ` · ${c.level}` : ""}${
-                          c.domain ? ` · ${c.domain}` : ""
-                        }`
-                      : c.assessor_status === "complete"
-                      ? "Ready to plan"
-                      : c.assessor_status === "in_progress"
-                      ? "Assessment in progress"
-                      : "New"}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={styles.removeBtn}
-                  onPress={() => removeCurriculum(c)}
-                  hitSlop={8}
-                >
-                  <Text style={styles.removeBtnText}>Remove</Text>
-                </Pressable>
-              </View>
+              <CurriculumRow
+                key={c.id}
+                item={c}
+                onOpen={() => router.push(`/curriculum/${c.id}`)}
+                onRemove={() => removeCurriculum(c)}
+              />
             ))
           )}
         </View>
 
-        <Text style={styles.sectionHeader}>Diagnostics</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.label}>API URL</Text>
-          <Text style={styles.value}>{BASE_URL}</Text>
+        {/* Diagnostics — collapsed bottom strip */}
+        <View style={{ gap: spacing.sm, marginTop: spacing.lg }}>
+          <Text style={styles.sectionLabel}>Diagnostics</Text>
+          <View style={styles.diagRow}>
+            <DiagPill ok={!healthError && !!health} label="API" />
+            <DiagPill ok={meOk === true} label="JWT" />
+            <DiagPill
+              ok={!!health?.configured.openai}
+              label="OpenAI"
+            />
+            <DiagPill
+              ok={!!health?.configured.supabase}
+              label="Supabase"
+            />
+          </View>
+          <Text style={styles.diagDetail}>{BASE_URL}</Text>
+          {healthError ? (
+            <Text style={styles.diagError}>{healthError}</Text>
+          ) : null}
+          {meError ? <Text style={styles.diagError}>{meError}</Text> : null}
         </View>
 
-        {healthError ? (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.label}>/health error</Text>
-            <Text style={styles.value}>{healthError}</Text>
-          </View>
-        ) : health ? (
-          <View style={[styles.card, styles.cardOk]}>
-            <Text style={styles.label}>/health</Text>
-            <Text style={styles.value}>
-              {health.status} ({health.env})
-            </Text>
-            <Text style={styles.value}>
-              Supabase: {health.configured.supabase ? "✓" : "—"}
-              {"   "}
-              OpenAI: {health.configured.openai ? "✓" : "—"}
-              {"   "}
-              RevenueCat: {health.configured.revenuecat ? "✓" : "—"}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <ActivityIndicator />
-            <Text style={styles.hint}>Calling /health…</Text>
-          </View>
-        )}
-
-        {meOk === true ? (
-          <View style={[styles.card, styles.cardOk]}>
-            <Text style={styles.label}>/auth/me</Text>
-            <Text style={styles.value}>JWT verified by backend ✓</Text>
-          </View>
-        ) : meOk === false ? (
-          <View style={[styles.card, styles.cardError]}>
-            <Text style={styles.label}>/auth/me error</Text>
-            <Text style={styles.value}>{meError}</Text>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <ActivityIndicator />
-            <Text style={styles.hint}>Verifying JWT with backend…</Text>
-          </View>
-        )}
-
-        <Pressable style={styles.signOutButton} onPress={signOut}>
+        <Pressable style={styles.signOut} onPress={signOut}>
           <Text style={styles.signOutText}>Sign out</Text>
         </Pressable>
       </ScrollView>
@@ -227,80 +209,370 @@ export default function Home() {
   );
 }
 
+function curriculumProgress(c: CurriculumListItem): {
+  pct: number;
+  stepLabel: string;
+  barColor: string;
+} {
+  // Once the plan is generated, "progress" means: how many sessions have
+  // been completed out of how many sessions there are. A session = one
+  // curriculum_weeks row, and is "complete" when every exercise in it has
+  // been evaluated. The backend rolls these counts up into the list payload.
+  if (c.planner_status === "complete") {
+    const total = c.sessions_total ?? 0;
+    const done = c.sessions_completed ?? 0;
+    if (total > 0) {
+      const pct = Math.max(0, Math.min(1, done / total));
+      const all = done >= total;
+      const stepLabel = all
+        ? `All ${total} sessions complete 🎉`
+        : `${done} of ${total} sessions · ${Math.round(pct * 100)}%`;
+      const barColor = all
+        ? colors.success
+        : done > 0
+          ? colors.brand
+          : colors.textFaint;
+      return { pct: all ? 1 : Math.max(pct, 0.04), stepLabel, barColor };
+    }
+    // Plan ready but no week rows — show "ready to learn" rather than 100%.
+    return {
+      pct: 0.04,
+      stepLabel: "Plan ready · start your first session",
+      barColor: colors.brand,
+    };
+  }
+  if (c.assessor_status === "complete") {
+    return { pct: 0.66, stepLabel: "Step 2/3 · generate your plan", barColor: colors.brand };
+  }
+  if (c.assessor_status === "in_progress") {
+    return { pct: 0.33, stepLabel: "Step 1/3 · assessment in progress", barColor: colors.warning };
+  }
+  return { pct: 0.05, stepLabel: "Step 1/3 · start assessment", barColor: colors.textFaint };
+}
+
+function CurriculumRow({
+  item,
+  onOpen,
+  onRemove,
+}: {
+  item: CurriculumListItem;
+  onOpen: () => void;
+  onRemove: () => void;
+}) {
+  const { badge, badgeBg, badgeFg } = statusBadge(item);
+  const emoji = domainEmoji(item.domain);
+  const { pct, stepLabel, barColor } = curriculumProgress(item);
+
+  return (
+    <View style={[styles.curriculumRow, shadow.card]}>
+      <Pressable style={styles.curriculumBody} onPress={onOpen}>
+        {/* Top row: icon + title + badge */}
+        <View style={styles.curriculumTopRow}>
+          <View style={styles.curriculumIcon}>
+            <Text style={{ fontSize: 22 }}>{emoji}</Text>
+          </View>
+          <View style={{ flex: 1, gap: 4 }}>
+            <Text style={styles.curriculumTitle} numberOfLines={2}>
+              {item.goal || item.topic || "Untitled"}
+            </Text>
+            <View style={styles.curriculumMetaRow}>
+              <View
+                style={[styles.statusBadge, { backgroundColor: badgeBg }]}
+              >
+                <Text style={[styles.statusBadgeText, { color: badgeFg }]}>
+                  {badge}
+                </Text>
+              </View>
+              {item.level ? (
+                <Text style={styles.curriculumMeta}>· {item.level}</Text>
+              ) : null}
+              {item.domain ? (
+                <Text style={styles.curriculumMeta}>· {item.domain}</Text>
+              ) : null}
+            </View>
+          </View>
+        </View>
+
+        {/* Progress bar + stats */}
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressStepLabel}>{stepLabel}</Text>
+          </View>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${pct * 100}%` as any, backgroundColor: barColor },
+              ]}
+            />
+          </View>
+        </View>
+      </Pressable>
+
+      <Pressable
+        style={styles.removeBtn}
+        onPress={onRemove}
+        hitSlop={8}
+        accessibilityLabel="Remove curriculum"
+      >
+        <Text style={styles.removeBtnText}>×</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function DiagPill({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <View
+      style={[
+        styles.diagPill,
+        { backgroundColor: ok ? colors.successSoft : colors.dangerSoft },
+      ]}
+    >
+      <Text style={{ fontSize: 11 }}>{ok ? "✓" : "—"}</Text>
+      <Text
+        style={[
+          styles.diagPillText,
+          { color: ok ? "#15803d" : colors.danger },
+        ]}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function statusBadge(c: CurriculumListItem) {
+  if (c.planner_status === "complete") {
+    return { badge: "Plan ready", badgeBg: colors.successSoft, badgeFg: "#15803d" };
+  }
+  if (c.assessor_status === "complete") {
+    return {
+      badge: "Ready to plan",
+      badgeBg: colors.brandSoft,
+      badgeFg: colors.brandDeep,
+    };
+  }
+  if (c.assessor_status === "in_progress") {
+    return {
+      badge: "Assessing…",
+      badgeBg: colors.warningSoft,
+      badgeFg: "#a16207",
+    };
+  }
+  return { badge: "New", badgeBg: colors.surfaceMuted, badgeFg: colors.textMuted };
+}
+
+function domainEmoji(domain: string | null): string {
+  switch (domain) {
+    case "language":
+      return "🗣️";
+    case "code":
+      return "💻";
+    case "music":
+      return "🎵";
+    case "academic":
+      return "📚";
+    case "creative":
+      return "🎨";
+    case "fitness":
+      return "💪";
+    case "professional":
+      return "💼";
+    default:
+      return "✨";
+  }
+}
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#fafafa" },
-  content: { padding: 24, gap: 16 },
-  title: { fontSize: 32, fontWeight: "700" },
-  subtitle: { fontSize: 15, color: "#666", marginBottom: 8 },
-  sectionHeader: {
+  container: { flex: 1, backgroundColor: colors.bg },
+  content: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+
+  // Text that sits directly on the dark bg (not inside a card)
+  sectionLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#888",
+    color: "#ffffffaa",
     textTransform: "uppercase",
-    marginTop: 8,
+    letterSpacing: 0.6,
   },
-  card: {
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#eee",
-    gap: 6,
+
+  // Hero
+  hero: {
+    borderRadius: radii.xl,
+    padding: spacing.xl,
+    gap: spacing.sm,
+    overflow: "hidden",
   },
-  cardOk: { borderColor: "#b7eb8f", backgroundColor: "#f6ffed" },
-  cardError: { borderColor: "#ffa39e", backgroundColor: "#fff1f0" },
-  label: {
+  heroEyebrow: {
+    color: "#ffffffcc",
     fontSize: 12,
-    fontWeight: "600",
-    color: "#888",
+    fontWeight: "800",
+    letterSpacing: 2,
     textTransform: "uppercase",
   },
-  value: { fontSize: 15, color: "#222" },
-  hint: { fontSize: 13, color: "#888", marginTop: 4 },
-  primary: {
-    backgroundColor: "#111",
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
+  heroTitle: {
+    color: colors.textOnDark,
+    fontSize: 28,
+    fontWeight: "800",
+    letterSpacing: -0.5,
   },
-  primaryText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  heroSubtitle: {
+    color: "#ffffffcc",
+    fontSize: 15,
+    marginBottom: spacing.md,
+  },
+  heroCta: {
+    backgroundColor: "#ffffff",
+    paddingVertical: 12,
+    paddingHorizontal: 18,
+    borderRadius: radii.pill,
+    alignSelf: "flex-start",
+    ...shadow.raised,
+  },
+  heroCtaText: {
+    color: colors.brandDeep,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  // Cards
+  card: {
+    backgroundColor: colors.surface,
+    padding: spacing.lg,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: spacing.sm,
+  },
+  cardDanger: {
+    borderColor: colors.danger,
+    backgroundColor: colors.dangerSoft,
+  },
+  emptyCard: {
+    alignItems: "flex-start",
+    paddingVertical: spacing.xl,
+    gap: spacing.sm,
+  },
+  emptyEmoji: { fontSize: 36 },
+  emptyCta: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.brand,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 10,
+    borderRadius: radii.pill,
+  },
+  emptyCtaText: { color: "#fff", fontWeight: "700" },
+
+  // Curriculum row
   curriculumRow: {
     flexDirection: "row",
     alignItems: "stretch",
-    backgroundColor: "#fff",
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
     borderWidth: 1,
-    borderColor: "#eee",
+    borderColor: colors.border,
     overflow: "hidden",
   },
   curriculumBody: {
     flex: 1,
-    padding: 14,
-    gap: 4,
+    flexDirection: "column",
+    padding: spacing.md,
+    gap: spacing.sm,
   },
-  curriculumTitle: { fontSize: 16, fontWeight: "600", color: "#222" },
-  curriculumMeta: { fontSize: 13, color: "#666" },
+  curriculumTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  curriculumIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: radii.md,
+    backgroundColor: colors.brandSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  curriculumTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  curriculumMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  curriculumMeta: { fontSize: 12, color: colors.textMuted },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+  },
+  statusBadgeText: { fontSize: 11, fontWeight: "700" },
+
+  // Progress bar
+  progressSection: {
+    gap: 5,
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  progressStepLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "500",
+  },
+  progressTrack: {
+    height: 6,
+    backgroundColor: colors.border,
+    borderRadius: radii.pill,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: radii.pill,
+  },
+
   removeBtn: {
     paddingHorizontal: 14,
     justifyContent: "center",
     alignItems: "center",
     borderLeftWidth: 1,
-    borderLeftColor: "#eee",
-    backgroundColor: "#fff5f5",
+    borderLeftColor: colors.border,
+    backgroundColor: colors.dangerSoft,
   },
-  removeBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#c0392b",
+  removeBtnText: { fontSize: 22, color: colors.danger, fontWeight: "700" },
+
+  // Diagnostics
+  diagRow: { flexDirection: "row", gap: 6, flexWrap: "wrap" },
+  diagPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radii.pill,
   },
-  signOutButton: {
-    marginTop: 8,
+  diagPillText: { fontSize: 12, fontWeight: "700" },
+  diagDetail: { fontSize: 11, color: "#ffffff55" },
+  diagError: { fontSize: 11, color: colors.danger },
+
+  // Sign out
+  signOut: {
+    marginTop: spacing.md,
     paddingVertical: 12,
     alignItems: "center",
-    borderRadius: 10,
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: "#ddd",
-    backgroundColor: "#fff",
+    borderColor: "#ffffff22",
+    backgroundColor: "#ffffff0f",
   },
-  signOutText: { fontSize: 15, color: "#c0392b", fontWeight: "600" },
+  signOutText: { fontSize: 14, color: "#ffffffaa", fontWeight: "600" },
 });
