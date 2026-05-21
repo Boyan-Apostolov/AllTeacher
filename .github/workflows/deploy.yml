@@ -81,7 +81,6 @@ jobs:
 
   deploy-ios:
     runs-on: self-hosted
-    needs: deploy-backend
     environment: ios
     defaults:
       run:
