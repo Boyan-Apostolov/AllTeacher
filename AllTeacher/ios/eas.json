@@ -14,7 +14,7 @@
     "production": {
       "autoIncrement": true,
       "ios": {
-        "image": "latest"
+        "image": "macos-ventura-13.6-xcode-15.2-ndk-r25c"
       }
     }
   },
