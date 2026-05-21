@@ -104,7 +104,7 @@ jobs:
         run: npm install -g yarn
 
       - name: Trust git directory for EAS
-        run: git config --global --add safe.directory '*'
+        run: git config --system --add safe.directory '*'
 
       - name: Setup EAS
         uses: expo/expo-github-action@v8
