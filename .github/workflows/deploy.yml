@@ -101,6 +101,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install yarn
+        run: npm install -g yarn
+
       - name: Setup EAS
         uses: expo/expo-github-action@v8
         with:
@@ -108,4 +111,7 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
 
       - name: Build & submit to TestFlight
+        env:
+          GIT_DIR: ${{ github.workspace }}/.git
+          GIT_WORK_TREE: ${{ github.workspace }}
         run: eas build --platform ios --profile production --auto-submit --non-interactive
