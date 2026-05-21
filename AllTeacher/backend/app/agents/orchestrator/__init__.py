@@ -43,12 +43,14 @@ covers one phase of the lifecycle:
   - _base.py       : `db` + row loaders shared by every phase
   - _assessment.py : Assessor + Planner phase
   - _exercises.py  : Exercise Writer + Evaluator phase
+  - _tracker.py    : Tracker (read) + Adapter (re-plan) phase
 """
 from __future__ import annotations
 
 from ._assessment import _AssessmentMixin
 from ._base import _OrchestratorBase
 from ._exercises import _ExercisesMixin
+from ._tracker import _TrackerMixin
 from .errors import (
     BadAgentResponse,
     Conflict,
@@ -63,7 +65,12 @@ from .types import (
 )
 
 
-class Orchestrator(_AssessmentMixin, _ExercisesMixin, _OrchestratorBase):
+class Orchestrator(
+    _AssessmentMixin,
+    _ExercisesMixin,
+    _TrackerMixin,
+    _OrchestratorBase,
+):
     """Stateless object built per-request — pass the Supabase client in.
 
     Composes the per-phase mixins onto `_OrchestratorBase`, which owns the

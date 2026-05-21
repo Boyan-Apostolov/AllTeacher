@@ -21,13 +21,15 @@ from .types import AssessorStepPayload, PlanPayload
 
 
 class _AssessmentMixin:
-    """Provided by `_OrchestratorBase`: `db`, `_load_curriculum`."""
+    """Provided by `_OrchestratorBase`: `db`, `_load_curriculum`.
+
+    See the note in `_ExercisesMixin`: don't add `def _load_curriculum(...)
+    -> ...: ...` stubs here, even for type-checking. At runtime the `...`
+    body is a real method that returns None and shadows the real loader on
+    `_OrchestratorBase`.
+    """
 
     db: Any
-
-    def _load_curriculum(  # type: ignore[empty-body]  # provided by base
-        self, curriculum_id: str, user_id: str
-    ) -> dict[str, Any]: ...
 
     # ----- public methods -----
 

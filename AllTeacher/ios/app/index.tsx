@@ -126,12 +126,20 @@ export default function Home() {
           <Text style={styles.heroSubtitle}>
             Pick up where you left off, or start something new.
           </Text>
-          <Pressable
-            style={styles.heroCta}
-            onPress={() => router.push("/curriculum/new")}
-          >
-            <Text style={styles.heroCtaText}>+ Start something new</Text>
-          </Pressable>
+          <View style={styles.heroCtaRow}>
+            <Pressable
+              style={styles.heroCta}
+              onPress={() => router.push("/curriculum/new")}
+            >
+              <Text style={styles.heroCtaText}>+ Start something new</Text>
+            </Pressable>
+            <Pressable
+              style={styles.heroCtaGhost}
+              onPress={() => router.push("/progress")}
+            >
+              <Text style={styles.heroCtaGhostText}>📈 Progress</Text>
+            </Pressable>
+          </View>
         </Gradient>
 
         {/* Curricula */}
