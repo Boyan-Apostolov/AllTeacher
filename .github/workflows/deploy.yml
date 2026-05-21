@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - final-deployment
+    paths-ignore:
+      - 'AllTeacher/ios/ios/**'
 
 jobs:
   deploy-website:
@@ -79,5 +81,38 @@ jobs:
               bobby156/allteacher-backend:latest
           EOF
 
-  # iOS builds are handled by Xcode Cloud
-  # Xcode Cloud watches this repo and submits to TestFlight automatically on push to main
+  prebuild-ios:
+    runs-on: self-hosted
+    needs: deploy-backend
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: AllTeacher/ios
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: AllTeacher/ios/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Expo Prebuild
+        run: CI=1 npx expo prebuild --platform ios
+
+      - name: Commit ios/ folder to main
+        run: |
+          git config user.email "ci@allteacher.app"
+          git config user.name "AllTeacher CI"
+          git add -f ios/
+          git diff --staged --quiet || git commit -m "chore: prebuild ios [skip ci]"
+          git push origin HEAD

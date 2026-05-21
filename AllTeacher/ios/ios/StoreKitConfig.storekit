@@ -1,0 +1,84 @@
+{
+  "identifier": "AllTeacherStoreKitConfig",
+  "nonConsumableInAppPurchases": [],
+  "consumableInAppPurchases": [],
+  "subscriptionGroups": [
+    {
+      "id": "group_allteacher_plans",
+      "localizations": [
+        {
+          "description": "AllTeacher subscription plans",
+          "displayName": "AllTeacher Plans",
+          "locale": "en_US"
+        }
+      ],
+      "name": "AllTeacher Plans",
+      "subscriptions": [
+        {
+          "adHocOfferCodeEligible": false,
+          "displayPrice": "2.99",
+          "familySharable": false,
+          "groupNumber": 1,
+          "internalID": "starter_monthly_internal",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Up to 2 curricula, listening exercises and adaptive re-planning. Cancel any time.",
+              "displayName": "Starter",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.allteacher.app.starter.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "AllTeacher Starter Monthly",
+          "subscriptionGroupID": "group_allteacher_plans",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOfferCodeEligible": false,
+          "displayPrice": "7.99",
+          "familySharable": false,
+          "groupNumber": 2,
+          "internalID": "pro_monthly_internal",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Up to 5 curricula, harder drills, full adaptive control. Cancel any time.",
+              "displayName": "Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.allteacher.app.pro.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "AllTeacher Pro Monthly",
+          "subscriptionGroupID": "group_allteacher_plans",
+          "type": "RecurringSubscription"
+        },
+        {
+          "adHocOfferCodeEligible": false,
+          "displayPrice": "14.99",
+          "familySharable": false,
+          "groupNumber": 3,
+          "internalID": "power_monthly_internal",
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited curricula, priority AI models, early access. Cancel any time.",
+              "displayName": "Power",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.allteacher.app.power.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "AllTeacher Power Monthly",
+          "subscriptionGroupID": "group_allteacher_plans",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}
