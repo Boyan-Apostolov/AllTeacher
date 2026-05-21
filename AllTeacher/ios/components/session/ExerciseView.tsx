@@ -2,6 +2,10 @@
  * Composer for one active exercise. Picks the body component for the
  * exercise type, shows a scoring spinner during submission, then a
  * feedback card + advance CTA once it's evaluated.
+ *
+ * Legacy `essay_prompt` rows still in the DB (the type was retired in
+ * favour of `short_answer` with a rubric) get routed through ShortAnswer
+ * here so old curricula keep working without a data migration.
  */
 import { ActivityIndicator, Text, View } from "react-native";
 
@@ -12,7 +16,6 @@ import type {
 import { PrimaryCta } from "@/components/ui";
 import { colors, spacing, typeAccent } from "@/lib/theme";
 
-import { EssayPrompt } from "./EssayPrompt";
 import { ExerciseHeader } from "./ExerciseHeader";
 import { exerciseViewStyles as styles } from "./ExerciseView.styles";
 import { FeedbackCard } from "./FeedbackCard";
@@ -62,16 +65,10 @@ export function ExerciseView({
           disabled={submitting || evaluated}
           onRate={(rating) => onSubmit({ self_rating: rating })}
         />
-      ) : c.type === "short_answer" ? (
+      ) : c.type === "short_answer" || c.type === "essay_prompt" ? (
+        // essay_prompt is legacy — fall through to ShortAnswer so
+        // existing rows still render after the schema simplification.
         <ShortAnswer
-          key={exercise.id}
-          content={c}
-          submission={exercise.submission_json}
-          disabled={submitting || evaluated}
-          onSubmit={(text) => onSubmit({ text })}
-        />
-      ) : c.type === "essay_prompt" ? (
-        <EssayPrompt
           key={exercise.id}
           content={c}
           submission={exercise.submission_json}

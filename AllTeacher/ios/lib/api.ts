@@ -103,6 +103,9 @@ export type WeekRow = {
 
 // --- Exercises (Exercise Writer + Evaluator) ---
 
+// `essay_prompt` is a legacy type — new generations only emit the three
+// types above. The iOS renderer still routes it to ShortAnswer so old
+// rows in the DB keep rendering after the schema change.
 export type ExerciseType =
   | "multiple_choice"
   | "flashcard"
@@ -122,9 +125,10 @@ export type ExerciseContent = {
   // short_answer
   expected?: string;
   rubric?: string[];
-  // essay_prompt
+  // legacy essay_prompt — kept for old rows
   expected_length?: string;
-  // all
+  // legacy — Exercise Writer no longer emits this; per-answer "why this
+  // missed the goal" comes from ExerciseFeedback.gap instead
   explanation?: string;
 };
 
@@ -137,6 +141,10 @@ export type ExerciseFeedback = {
   score: number;
   verdict: "correct" | "partial" | "incorrect" | "reviewed";
   feedback: string;
+  // Per-answer explanation of *why* the user's submission missed the
+  // goal. Empty for verdict='correct' / score≥0.9. Replaces the static
+  // ExerciseContent.explanation that used to repeat the prompt.
+  gap?: string;
   weak_areas: string[];
   strengths?: string[];
   next_focus: string;
@@ -166,6 +174,29 @@ export type GenerateExercisesResponse = {
 export type SubmitExerciseResponse = ExerciseFeedback & {
   id: string;
   status: "evaluated";
+};
+
+// --- Lessons (Explainer) — short adaptive intro before each module ---
+
+export type LessonContent = {
+  concept_title: string;
+  intro: string;
+  key_points: string[];
+  example: string;
+  pitfalls: string[];
+  next_up: string;
+};
+
+export type LessonRow = {
+  id: string;
+  curriculum_id: string;
+  week_id: string;
+  module_index: number;
+  concept_title: string;
+  content_json: LessonContent;
+  status: "pending" | "ready" | "seen";
+  seen_at: string | null;
+  created_at: string | null;
 };
 
 // --- Tracker / Adapter (progress dashboard + re-plan) ---
@@ -354,7 +385,14 @@ export const api = {
   generateExercises: (
     token: string,
     curriculumId: string,
-    body: { week_id?: string; count?: number } = {},
+    body: {
+      week_id?: string;
+      count?: number;
+      module_index?: number;
+      // Bonus drill — every item targets one of the user's
+      // recent_weak_areas tags. Rows are inserted with module_index=null.
+      focus_weak_areas?: boolean;
+    } = {},
   ) =>
     request<GenerateExercisesResponse>(
       `/curriculum/${curriculumId}/exercises`,
@@ -364,6 +402,37 @@ export const api = {
         body: JSON.stringify(body),
       },
     ),
+
+  // --- Lessons ---
+
+  listLessons: (
+    token: string,
+    curriculumId: string,
+    weekId?: string,
+  ) => {
+    const qs = weekId ? `?week_id=${encodeURIComponent(weekId)}` : "";
+    return request<{ lessons: LessonRow[] }>(
+      `/curriculum/${curriculumId}/lessons${qs}`,
+      { headers: authHeaders(token) },
+    );
+  },
+
+  generateLesson: (
+    token: string,
+    curriculumId: string,
+    body: { week_id?: string; module_index?: number } = {},
+  ) =>
+    request<LessonRow>(`/curriculum/${curriculumId}/lessons`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    }),
+
+  markLessonSeen: (token: string, lessonId: string) =>
+    request<LessonRow>(`/curriculum/lessons/${lessonId}/seen`, {
+      method: "POST",
+      headers: authHeaders(token),
+    }),
 
   submitExercise: (
     token: string,

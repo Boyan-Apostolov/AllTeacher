@@ -7,6 +7,8 @@ high-level intent:
   - start_curriculum            → Assessor (first question)
   - submit_assessor_answer      → Assessor (next question / final summary)
   - generate_plan               → Planner
+  - generate_lesson             → Explainer (one lesson per planner module)
+  - mark_lesson_seen            → flips lessons.status='seen'
   - generate_exercises          → Exercise Writer
   - submit_exercise             → Evaluator (single submission scoring)
   - (future) tracker / adapter  → re-plan based on accumulated feedback
@@ -42,6 +44,7 @@ covers one phase of the lifecycle:
   - types.py       : TypedDict response shapes
   - _base.py       : `db` + row loaders shared by every phase
   - _assessment.py : Assessor + Planner phase
+  - _lessons.py    : Explainer phase (lessons before exercises)
   - _exercises.py  : Exercise Writer + Evaluator phase
   - _tracker.py    : Tracker (read) + Adapter (re-plan) phase
 """
@@ -50,6 +53,7 @@ from __future__ import annotations
 from ._assessment import _AssessmentMixin
 from ._base import _OrchestratorBase
 from ._exercises import _ExercisesMixin
+from ._lessons import _LessonsMixin
 from ._tracker import _TrackerMixin
 from .errors import (
     BadAgentResponse,
@@ -61,12 +65,14 @@ from .types import (
     AssessorStepPayload,
     ExerciseEvalPayload,
     ExercisesPayload,
+    LessonPayload,
     PlanPayload,
 )
 
 
 class Orchestrator(
     _AssessmentMixin,
+    _LessonsMixin,
     _ExercisesMixin,
     _TrackerMixin,
     _OrchestratorBase,
@@ -89,4 +95,5 @@ __all__ = [
     "PlanPayload",
     "ExercisesPayload",
     "ExerciseEvalPayload",
+    "LessonPayload",
 ]

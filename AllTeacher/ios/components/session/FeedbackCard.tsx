@@ -1,8 +1,13 @@
 /**
  * Post-submission feedback card. Verdict-driven tone (correct, partial,
  * reviewed, incorrect) sets the icon/label/colors. Body shows the
- * scorer's feedback, the content's authored explanation, weak areas,
- * and the next-focus suggestion.
+ * scorer's feedback, the per-answer "why this missed the goal" gap,
+ * weak areas, and the next-focus suggestion.
+ *
+ * The gap line replaces the previous static `content.explanation` block
+ * — that one just restated the question's requirements; this one names
+ * what the user's submission specifically failed to do. Comes from the
+ * Evaluator at submission time. Empty for fully correct answers.
  */
 import { Text, View } from "react-native";
 
@@ -48,12 +53,13 @@ function toneFor(verdict: ExerciseFeedback["verdict"]): Tone {
 
 export function FeedbackCard({
   feedback,
-  content,
+  content: _content,
 }: {
   feedback: ExerciseFeedback;
   content: ExerciseContent;
 }) {
   const tone = toneFor(feedback.verdict);
+  const gap = (feedback.gap ?? "").trim();
 
   return (
     <View style={[styles.card, { backgroundColor: tone.bg }]}>
@@ -69,10 +75,10 @@ export function FeedbackCard({
         </Text>
       </View>
       <Text style={styles.body}>{feedback.feedback}</Text>
-      {content.explanation ? (
+      {gap.length > 0 ? (
         <View style={styles.block}>
-          <Text style={styles.label}>Explanation</Text>
-          <Text style={styles.body}>{content.explanation}</Text>
+          <Text style={styles.label}>Where it fell short</Text>
+          <Text style={styles.body}>{gap}</Text>
         </View>
       ) : null}
       {feedback.weak_areas.length > 0 ? (
