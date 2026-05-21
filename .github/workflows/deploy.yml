@@ -106,7 +106,9 @@ jobs:
         run: npm ci
 
       - name: Run Expo Prebuild
-        run: CI=1 npx expo prebuild --platform ios --no-install
+        run: |
+          rm -rf ios/
+          CI=1 npx expo prebuild --platform ios --no-install
 
       - name: Commit ios/ folder to main
         run: |
