@@ -83,6 +83,7 @@ jobs:
 
   prebuild-ios:
     runs-on: self-hosted
+    environment: ios
     permissions:
       contents: write
     defaults:
