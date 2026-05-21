@@ -3,7 +3,7 @@ set -e
 
 # Install Node
 brew install node@20
-export PATH="/usr/local/opt/node@20/bin:$PATH"
+export PATH="/usr/local/opt/node@20/bin:$PATH" 
 
 echo "Node: $(node --version)"
 echo "NPM: $(npm --version)"
