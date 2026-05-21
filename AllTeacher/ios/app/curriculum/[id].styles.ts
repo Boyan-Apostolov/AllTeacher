@@ -1,6 +1,6 @@
 import { StyleSheet } from "react-native";
 import { colors, radii, spacing } from "@/lib/theme";
-
+//
 export const curriculumScreenStyles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
@@ -21,7 +21,12 @@ export const curriculumScreenStyles = StyleSheet.create({
     shadowOffset: { width: 3, height: 3 },
     elevation: 3,
   },
-  emptyText: { fontSize: 14, color: colors.ink, lineHeight: 20, fontWeight: "500" },
+  emptyText: {
+    fontSize: 14,
+    color: colors.ink,
+    lineHeight: 20,
+    fontWeight: "500",
+  },
 
   // Action buttons ("Add more sessions" / "Make it harder")
   actionRow: { flexDirection: "row", gap: spacing.sm },
@@ -45,7 +50,12 @@ export const curriculumScreenStyles = StyleSheet.create({
   actionBtnPrimary: { backgroundColor: colors.brand },
   actionBtnSecondary: { backgroundColor: colors.mc },
   actionBtnDisabled: { opacity: 0.5 },
-  actionBtnText: { color: "#fff", fontSize: 13, fontWeight: "800", textAlign: "center" },
+  actionBtnText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "800",
+    textAlign: "center",
+  },
 
   actionBanner: {
     backgroundColor: colors.okSoft,
@@ -54,5 +64,10 @@ export const curriculumScreenStyles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.ink,
   },
-  actionBannerText: { fontSize: 13, color: colors.ink, lineHeight: 18, fontWeight: "600" },
+  actionBannerText: {
+    fontSize: 13,
+    color: colors.ink,
+    lineHeight: 18,
+    fontWeight: "600",
+  },
 });
