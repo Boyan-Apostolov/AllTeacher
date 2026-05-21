@@ -7,7 +7,7 @@
  * meaningfully by other users.
  *
  * Sections (top → bottom):
- *   1. Headline KPIs — total users, paying, MRR, today + 30-day cost,
+ *   1. Headline KPIs  — total users, paying, MRR, today + 30-day cost,
  *      30-day margin
  *   2. Activity — DAU/WAU/MAU + signups today/7d/30d
  *   3. Subscription mix — counts per tier
