@@ -6,7 +6,7 @@ on:
       - main
       - final-deployment
     paths-ignore:
-      - 'AllTeacher/ios/ios/**'
+      - "AllTeacher/ios/ios/**"
 
 jobs:
   deploy-website:
@@ -83,7 +83,6 @@ jobs:
 
   prebuild-ios:
     runs-on: self-hosted
-    needs: deploy-backend
     permissions:
       contents: write
     defaults:
