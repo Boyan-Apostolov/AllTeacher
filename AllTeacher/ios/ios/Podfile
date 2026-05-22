@@ -57,6 +57,15 @@ target 'AllTeacher' do
       :ccache_enabled => podfile_properties['apple.ccacheEnabled'] == 'true',
     )
 
+    # Disable precompiled headers for RNSVG — prefix.pch breaks on Xcode 16+
+    installer.pods_project.targets.each do |target|
+      if target.name == 'RNSVG'
+        target.build_configurations.each do |config|
+          config.build_settings['GCC_PRECOMPILE_PREFIX_HEADER'] = 'NO'
+        end
+      end
+    end
+
     # This is necessary for Xcode 14, because it signs resource bundles by default
     # when building for devices.
     installer.target_installation_results.pod_target_installation_results
