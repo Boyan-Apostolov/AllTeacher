@@ -113,6 +113,9 @@ jobs:
         run: |
           git config user.email "ci@allteacher.app"
           git config user.name "AllTeacher CI"
+          git config http.postBuffer 524288000
           git add -f ios/
           git diff --staged --quiet || git commit -m "chore: prebuild ios [skip ci]"
-          git push origin HEAD
+          for i in 1 2 3; do
+            git push origin HEAD && break || sleep 10
+          done
