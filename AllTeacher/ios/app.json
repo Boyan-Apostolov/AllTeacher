@@ -10,6 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "buildNumber": "2",
       "bundleIdentifier": "com.allteacher.app",
       "usesAppleSignIn": true,
       "infoPlist": {
