@@ -1,14 +1,13 @@
 /**
  * Video comprehension exercise body.
  *
- * Shows a YouTube thumbnail. Tapping opens the video in a native Safari
- * sheet (SFSafariViewController on iOS) via expo-web-browser — the sheet
- * slides up inside the app so the user never leaves. This avoids all
- * YouTube embedding errors (150/152/153) which occur regardless of the
- * videoEmbeddable API filter.
+ * Uses react-native-youtube-iframe which implements the YouTube IFrame
+ * Player API in a properly-configured WebView. This is the only reliable
+ * way to embed YouTube in-app on iOS without error 150/152/153.
  */
-import * as WebBrowser from "expo-web-browser";
-import { Image, Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import { Pressable, Text, View } from "react-native";
+import YoutubePlayer from "react-native-youtube-iframe";
 
 import type { ExerciseContent, ExerciseRow } from "@/lib/api";
 import { spacing } from "@/lib/theme";
@@ -38,57 +37,38 @@ export function VideoChoice({
   const videoUrl = content.video_url as string | undefined;
   const prompt = content.prompt || "";
   const videoId = videoUrl ? extractVideoId(videoUrl) : null;
-  const thumbnailUri = videoId
-    ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`
-    : null;
+  const [hasWatched, setHasWatched] = useState(false);
 
   const chosen =
     submission && "choice_index" in submission
       ? (submission as { choice_index: number }).choice_index
       : null;
   const correct = content.correct_index;
-
-  function openVideo() {
-    if (!videoId) return;
-    WebBrowser.openBrowserAsync(`https://www.youtube.com/watch?v=${videoId}`, {
-      presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
-      controlsColor: "#FF0000",
-    });
-  }
+  const optionsUnlocked = hasWatched || disabled;
 
   return (
     <View style={{ gap: spacing.lg }}>
-      {/* ── Video thumbnail card ── */}
+      {/* ── YouTube player ── */}
       {videoId ? (
-        <Pressable
-          style={({ pressed }) => [
-            styles.videoCard,
-            pressed && styles.videoCardPressed,
-          ]}
-          onPress={openVideo}
-        >
-          {thumbnailUri ? (
-            <Image
-              source={{ uri: thumbnailUri }}
-              style={styles.thumbnail}
-              resizeMode="cover"
-            />
-          ) : (
-            <View style={styles.thumbnailFallback}>
-              <Text style={styles.thumbnailFallbackIcon}>🎬</Text>
-            </View>
-          )}
-          {/* Red play button overlay */}
-          <View style={styles.videoOverlay}>
-            <View style={styles.playBtn}>
-              <Text style={styles.playBtnIcon}>▶</Text>
-            </View>
-          </View>
+        <View style={styles.videoCard}>
+          <YoutubePlayer
+            height={210}
+            videoId={videoId}
+            play={false}
+            webViewProps={{
+              allowsFullscreenVideo: true,
+              allowsInlineMediaPlayback: true,
+            }}
+          />
           <View style={styles.videoFooter}>
             <Text style={styles.videoLabel}>🎬 Watch & answer</Text>
-            <Text style={styles.videoHint}>Tap to watch</Text>
+            {hasWatched || disabled ? (
+              <View style={styles.watchedBadge}>
+                <Text style={styles.watchedBadgeText}>✓ Watched</Text>
+              </View>
+            ) : null}
           </View>
-        </Pressable>
+        </View>
       ) : (
         <View style={styles.noVideoCard}>
           <Text style={styles.noVideoIcon}>🎬</Text>
@@ -96,17 +76,32 @@ export function VideoChoice({
         </View>
       )}
 
-      {/* ── Comprehension question ── */}
-      {prompt ? (
-        <Text style={styles.promptText}>{prompt}</Text>
+      {/* ── "I've watched it" gate ── */}
+      {!hasWatched && !disabled ? (
+        <View style={styles.watchCtaRow}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.watchCta,
+              pressed && styles.watchCtaPressed,
+            ]}
+            onPress={() => setHasWatched(true)}
+          >
+            <Text style={styles.watchCtaIcon}>👁</Text>
+            <Text style={styles.watchCtaText}>I've watched it</Text>
+          </Pressable>
+        </View>
       ) : null}
 
-      {/* ── Options — always unlocked, user watches at their own pace ── */}
-      <View style={{ gap: spacing.sm }}>
+      {/* ── Comprehension question ── */}
+      {prompt ? <Text style={styles.promptText}>{prompt}</Text> : null}
+
+      {/* ── Options ── */}
+      <View style={{ gap: spacing.sm, opacity: optionsUnlocked ? 1 : 0.4 }}>
         {(content.options ?? []).map((opt, idx) => {
           const isChosen = chosen === idx;
           const showCorrect = disabled && correct === idx;
           const showWrong = disabled && isChosen && correct !== idx;
+          const blocked = !optionsUnlocked || disabled;
           return (
             <Pressable
               key={`${idx}-${opt}`}
@@ -116,10 +111,10 @@ export function VideoChoice({
                 showCorrect && mcStyles.optionCorrect,
                 showWrong && mcStyles.optionWrong,
                 disabled && !isChosen && !showCorrect && mcStyles.optionFaded,
-                pressed && !disabled && mcStyles.optionPressed,
+                pressed && !blocked && mcStyles.optionPressed,
               ]}
               onPress={() => onPick(idx)}
-              disabled={disabled}
+              disabled={blocked}
             >
               <View
                 style={[
@@ -141,6 +136,9 @@ export function VideoChoice({
             </Pressable>
           );
         })}
+        {!optionsUnlocked ? (
+          <Text style={styles.lockHint}>Watch the video first, then pick your answer.</Text>
+        ) : null}
       </View>
     </View>
   );
