@@ -52,6 +52,7 @@ jobs:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
           XCODE_CLOUD_WORKFLOW_ID: ${{ secrets.XCODE_CLOUD_WORKFLOW_ID }}
+          BRANCH_NAME: ${{ github.ref_name }}
         run: |
           python3 -m pip install PyJWT cryptography requests --quiet
           python3 - << 'EOF'
@@ -61,6 +62,7 @@ jobs:
           issuer_id = os.environ["ASC_ISSUER_ID"]
           key_id = os.environ["ASC_KEY_ID"]
           workflow_id = os.environ["XCODE_CLOUD_WORKFLOW_ID"]
+          branch_name = os.environ["BRANCH_NAME"]
 
           token = jwt.encode(
               {
@@ -74,22 +76,42 @@ jobs:
               headers={"kid": key_id}
           )
 
+          headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+          # Find the git reference ID for the current branch
+          wf_resp = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/ciWorkflows/{workflow_id}?include=repository",
+              headers=headers
+          )
+          wf_resp.raise_for_status()
+          repo_id = wf_resp.json()["data"]["relationships"]["repository"]["data"]["id"]
+
+          refs_resp = requests.get(
+              f"https://api.appstoreconnect.apple.com/v1/scmRepositories/{repo_id}/gitReferences",
+              headers=headers
+          )
+          refs_resp.raise_for_status()
+
+          branch_ref_id = None
+          for ref in refs_resp.json()["data"]:
+              if ref["attributes"]["name"] == branch_name and ref["attributes"]["kind"] == "BRANCH":
+                  branch_ref_id = ref["id"]
+                  break
+
+          if not branch_ref_id:
+              print(f"Branch '{branch_name}' not found in Xcode Cloud repository")
+              sys.exit(1)
+
+          # Trigger build on the correct branch
           resp = requests.post(
               "https://api.appstoreconnect.apple.com/v1/ciBuildRuns",
-              headers={
-                  "Authorization": f"Bearer {token}",
-                  "Content-Type": "application/json"
-              },
+              headers=headers,
               json={
                   "data": {
                       "type": "ciBuildRuns",
                       "relationships": {
-                          "workflow": {
-                              "data": {
-                                  "type": "ciWorkflows",
-                                  "id": workflow_id
-                              }
-                          }
+                          "workflow": {"data": {"type": "ciWorkflows", "id": workflow_id}},
+                          "sourceBranchOrTag": {"data": {"type": "scmGitReferences", "id": branch_ref_id}}
                       }
                   }
               }
@@ -100,7 +122,7 @@ jobs:
               print(resp.text)
               sys.exit(1)
 
-          print("Xcode Cloud build triggered successfully.")
+          print(f"Xcode Cloud build triggered for branch '{branch_name}'.")
           EOF
 
   deploy-backend:
