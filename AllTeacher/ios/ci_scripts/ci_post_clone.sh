@@ -16,6 +16,11 @@ npm ci
 export PATH="/usr/local/opt/node@20/bin:$PATH"
 npx expo prebuild --platform ios --no-install
 
+# Allow git to clone public repos without credential prompts (needed for
+# pods like RevenueCat that are fetched directly from GitHub in Xcode Cloud)
+git config --global credential.helper ""
+export GIT_TERMINAL_PROMPT=0
+
 # Install iOS pods
 cd ios
 pod install
