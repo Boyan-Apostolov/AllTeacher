@@ -52,6 +52,7 @@ from __future__ import annotations
 
 from ._assessment import _AssessmentMixin
 from ._base import _OrchestratorBase
+from ._cards import _CardsMixin
 from ._exercises import _ExercisesMixin
 from ._lessons import _LessonsMixin
 from ._tracker import _TrackerMixin
@@ -75,6 +76,7 @@ class Orchestrator(
     _LessonsMixin,
     _ExercisesMixin,
     _TrackerMixin,
+    _CardsMixin,
     _OrchestratorBase,
 ):
     """Stateless object built per-request — pass the Supabase client in.

@@ -109,6 +109,16 @@ class _LessonsMixin:
             persisted = existing_row[0]
             content = persisted.get("content_json") or {}
             if content:  # don't trust an empty row — fall through to regen
+                # Populate library cards from key_terms even on cache hits —
+                # so a user who joins after the lesson was cached still gets
+                # their cards. _upsert_one_card is idempotent (upserts on
+                # source_id), so re-running is safe.
+                self._upsert_cards_from_lesson(  # type: ignore[attr-defined]
+                    user_id=user_id,
+                    lesson_id=persisted["id"],
+                    key_terms=content.get("key_terms") or [],
+                    curriculum=row,
+                )
                 # Back-fill image_url on cached lessons that were generated
                 # before the Unsplash feature landed (they have no image_url).
                 # Derive a query from concept_title + domain when image_query
@@ -287,6 +297,14 @@ class _LessonsMixin:
                     status=500,
                 )
             persisted = inserted[0]
+
+        # Populate library cards from key_terms extracted by the Explainer.
+        self._upsert_cards_from_lesson(  # type: ignore[attr-defined]
+            user_id=user_id,
+            lesson_id=persisted["id"],
+            key_terms=(persisted.get("content_json") or {}).get("key_terms") or [],
+            curriculum=row,
+        )
 
         return _to_payload(persisted)
 

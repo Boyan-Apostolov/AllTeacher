@@ -468,6 +468,42 @@ export type GrantTierResponse = {
  * working — the message is still the same `"402 PAYMENT REQUIRED: ..."`
  * shape it used to be.
  */
+// --- Knowledge cards (Library page) ----------------------------------------
+
+export type KnowledgeCardDomain =
+  | "language" | "math" | "code" | "music" | "cooking"
+  | "science" | "history" | "art" | "fitness" | "business" | "general";
+
+export type KnowledgeCard = {
+  id: string;
+  user_id: string;
+  front: string;
+  back: string;
+  example: string | null;
+  domain: KnowledgeCardDomain;
+  curriculum: string;
+  curriculum_id: string | null;
+  emoji: string;
+  difficulty: "easy" | "medium" | "hard";
+  mastery: number;           // 0–100
+  last_reviewed: string | null; // ISO timestamp
+  next_due: string | null;      // ISO timestamp
+  source: "exercise" | "lesson" | "manual";
+  source_id: string | null;
+  created_at: string;
+};
+
+export type CreateCardBody = {
+  front: string;
+  back: string;
+  example?: string;
+  domain?: KnowledgeCardDomain;
+  curriculum?: string;
+  curriculum_id?: string;
+  emoji?: string;
+  difficulty?: "easy" | "medium" | "hard";
+};
+
 export class ApiError extends Error {
   status: number;
   body: { error?: string; detail?: string; [k: string]: unknown };
@@ -767,6 +803,56 @@ export const api = {
 
   deleteAccount: (token: string) =>
     request<{ ok: boolean }>("/auth/me", {
+      method: "DELETE",
+      headers: authHeaders(token),
+    }),
+
+  // --- Knowledge cards (Library page) -------------------------------------
+
+  listCards: (
+    token: string,
+    params: {
+      q?: string;
+      curriculum_id?: string;
+      filter?: "all" | "due" | "review" | "mastered";
+    } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.curriculum_id) qs.set("curriculum_id", params.curriculum_id);
+    if (params.filter && params.filter !== "all") qs.set("filter", params.filter);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<{ cards: KnowledgeCard[] }>(`/cards${suffix}`, {
+      headers: authHeaders(token),
+    });
+  },
+
+  createCard: (token: string, body: CreateCardBody) =>
+    request<{ card: KnowledgeCard }>("/cards", {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    }),
+
+  practiceCard: (
+    token: string,
+    cardId: string,
+    rating: "easy" | "medium" | "hard",
+  ) =>
+    request<{ card: KnowledgeCard }>(`/cards/${cardId}/practice`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+      body: JSON.stringify({ rating }),
+    }),
+
+  toggleMastered: (token: string, cardId: string) =>
+    request<{ card: KnowledgeCard }>(`/cards/${cardId}/mastered`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+    }),
+
+  deleteCard: (token: string, cardId: string) =>
+    request<{ ok: boolean; id: string }>(`/cards/${cardId}`, {
       method: "DELETE",
       headers: authHeaders(token),
     }),

@@ -762,3 +762,67 @@ Product analytics added to the iOS app via `posthog-react-native`. Gives the adm
 4. Add the same key to the EAS dashboard (under the `ios` environment variables) so production builds have it
 5. Run `cd ios && npm install`
 6. Push to `main` — the pipeline deploys automatically
+
+---
+
+### Library page — domain-agnostic spaced-repetition card bank (2026-05-23)
+
+Rebuilt the Vocabulary page (`ios/app/vocabulary.tsx` + `vocabulary.styles.ts`) into a universal knowledge bank that works for any skill domain — language, math, coding, music, cooking, etc.
+
+**Renames:**
+- Tab bar: "Vocab 📖" → "Library 🗂️" (`components/ui/BottomTabBar.tsx`)
+- Page title: "Vocabulary" → "Library"
+- Hero: "Your word bank" → "Your knowledge bank"; "Words collected from lessons" → "Concepts, terms, and facts collected from your lessons"
+- CTA: "Add a word manually" → "Add a card"
+- All "words" plural labels → "cards"
+
+**New data model (`KnowledgeCard`):** replaces `VocabWord`. Removes language-specific `target`/`native` fields. Adds `front`, `back`, `domain`, `curriculum_id`, `last_reviewed`, `next_due` (ISO dates for spaced repetition).
+
+**Filter tabs (4):** All / Due today / To review / Mastered. "Due today" counts cards where `next_due <= today`, sorted soonest first.
+
+**Curriculum picker:** horizontal scroll row above the filter tabs showing all curricula the user has cards from. Tapping a curriculum chip narrows the list; "All curricula" is the default.
+
+**Domain-aware card display:** `domain === "language"` renders `front → back` inline (word → translation). All other domains render `front` as a bold term with `back` as the definition below it.
+
+**"X cards due today" banner:** replaces the old "X words to review" banner. Only counts cards where `next_due <= today`. "Practice all →" CTA wires to the same Alert stub.
+
+**Stats strip:** 4th pill added — "Due today" in amber.
+
+**Multi-domain mock data:** 9 cards across Dutch A1 (language), Algebra Basics (math), JavaScript Fundamentals (code), Guitar Theory (music).
+
+**Auto-population note** (comment in the file): cards will eventually be populated from (1) completed flashcard exercises (`content_json.front`/`.back`) and (2) key terms tagged by the Explainer agent in lesson summaries.
+
+No new npm dependencies needed.
+
+**Updated (full implementation — 2026-05-23):** Mock data replaced with real API. See "Library — full implementation" section immediately below.
+
+---
+
+### Library — full implementation (2026-05-23)
+
+**DB migration** `013_knowledge_cards.sql` — run in Supabase SQL Editor before deploying:
+- `public.knowledge_cards` table: `front`, `back`, `example`, `domain`, `curriculum`, `curriculum_id`, `emoji`, `difficulty`, `mastery` (0–100), `last_reviewed`, `next_due`, `source` (`exercise`|`lesson`|`manual`), `source_id`.
+- RLS: users read/write their own rows.
+- Unique index on `(user_id, source_id)` prevents duplicate cards from the same source exercise.
+
+**Backend:**
+- `backend/app/routes/cards.py` — new blueprint registered at `/cards`:
+  - `GET /cards` — list all user cards (query params: `q`, `curriculum_id`, `filter`)
+  - `POST /cards` — manually create a card
+  - `PATCH /cards/<id>/practice` — record practice rating (`easy`/`medium`/`hard`), updates mastery + next_due via SM-2-inspired intervals
+  - `PATCH /cards/<id>/mastered` — toggle mastered (mastery=100, due in 14d) or back to review (mastery=40, due tomorrow)
+  - `DELETE /cards/<id>` — delete a card
+- `backend/app/agents/orchestrator/_cards.py` — `_CardsMixin.upsert_card_from_exercise()`: auto-creates/updates a KnowledgeCard when a flashcard exercise is evaluated. Blends old + new mastery (60/40 weight) on repeat submissions. Fails soft — never bubbles into the submit response.
+- `_exercises.py` — calls `_upsert_card_from_exercise` at the end of `_persist_evaluator_result` when exercise type is `flashcard`.
+- `orchestrator/__init__.py` — `_CardsMixin` added to `Orchestrator`.
+- `main.py` — `cards_bp` registered.
+
+**iOS:**
+- `lib/api.ts` — `KnowledgeCard`, `CreateCardBody` types + `listCards`, `createCard`, `practiceCard`, `toggleMastered`, `deleteCard` API methods.
+- `vocabulary.tsx` — full API-backed screen: loading state, pull-to-refresh, error state with retry, add-card modal (front/back/example/domain picker), practice dialog (Easy/Medium/Hard alert), mark mastered toggle. All state updates are optimistic (card list updated in-place without a full re-fetch).
+- `vocabulary.styles.ts` — added modal, loading, error, and retry styles.
+
+**User action required:**
+1. Run `013_knowledge_cards.sql` in Supabase SQL Editor.
+2. Restart the backend (`python app.py`).
+3. Cards will appear automatically once you complete flashcard exercises.

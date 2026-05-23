@@ -655,6 +655,16 @@ class _ExercisesMixin:
                 # still re-trigger via the explicit re-plan endpoint.
                 pass
 
+        # Auto-populate the knowledge card library from every completed exercise.
+        # _derive_front_back() in _cards.py handles each type; returns None for
+        # types that don't yield a clean card pair (falls through silently).
+        self._upsert_card_from_exercise(  # type: ignore[attr-defined]
+            user_id=user_id,
+            exercise=exercise,
+            curriculum=curriculum,
+            score=result.get("score"),
+        )
+
         return {
             "id": exercise_id,
             "score": float(result.get("score") or 0.0),
