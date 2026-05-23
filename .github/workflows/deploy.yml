@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - final-deployment
-    paths-ignore:
-      - "AllTeacher/ios/ios/**"
 
 jobs:
   deploy-website:
@@ -41,6 +39,68 @@ jobs:
               --name allteacher-website \
               -p 3000:80 \
               bobby156/allteacher-website:latest
+          EOF
+
+  trigger-xcode-cloud:
+    runs-on: self-hosted
+    environment: ios
+
+    steps:
+      - name: Trigger Xcode Cloud Build
+        env:
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          XCODE_CLOUD_WORKFLOW_ID: ${{ secrets.XCODE_CLOUD_WORKFLOW_ID }}
+        run: |
+          pip install PyJWT cryptography requests --quiet --break-system-packages
+          python3 - << 'EOF'
+          import jwt, time, requests, sys, os
+
+          private_key = os.environ["ASC_PRIVATE_KEY"]
+          issuer_id = os.environ["ASC_ISSUER_ID"]
+          key_id = os.environ["ASC_KEY_ID"]
+          workflow_id = os.environ["XCODE_CLOUD_WORKFLOW_ID"]
+
+          token = jwt.encode(
+              {
+                  "iss": issuer_id,
+                  "iat": int(time.time()),
+                  "exp": int(time.time()) + 1200,
+                  "aud": "appstoreconnect-v1"
+              },
+              private_key,
+              algorithm="ES256",
+              headers={"kid": key_id}
+          )
+
+          resp = requests.post(
+              "https://api.appstoreconnect.apple.com/v1/ciBuildRuns",
+              headers={
+                  "Authorization": f"Bearer {token}",
+                  "Content-Type": "application/json"
+              },
+              json={
+                  "data": {
+                      "type": "ciBuildRuns",
+                      "relationships": {
+                          "workflow": {
+                              "data": {
+                                  "type": "ciWorkflows",
+                                  "id": workflow_id
+                              }
+                          }
+                      }
+                  }
+              }
+          )
+
+          if resp.status_code not in (200, 201):
+              print(f"Failed to trigger build: {resp.status_code}")
+              print(resp.text)
+              sys.exit(1)
+
+          print("Xcode Cloud build triggered successfully.")
           EOF
 
   deploy-backend:
@@ -81,72 +141,3 @@ jobs:
               bobby156/allteacher-backend:latest
           EOF
 
-  prebuild-ios:
-    runs-on: self-hosted
-    environment: ios
-    permissions:
-      contents: write
-    defaults:
-      run:
-        working-directory: AllTeacher/ios
-
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-          cache-dependency-path: AllTeacher/ios/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run Expo Prebuild
-        run: CI=1 npx expo prebuild --platform ios --no-install
-
-      - name: Setup SSH for push
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-
-      - name: Add GitHub to known hosts
-        run: ssh-keyscan -H github.com >> ~/.ssh/known_hosts
-
-      - name: Commit ios/ folder to main
-        run: |
-          git config user.email "ci@allteacher.app"
-          git config user.name "AllTeacher CI"
-          git remote set-url origin git@github.com:${{ github.repository }}.git
-          git add -f ios/
-          git diff --staged --quiet || git commit -m "chore: prebuild ios [skip ci]"
-          BRANCH=$(git branch --show-current)
-          LOCAL_SHA=$(git rev-parse HEAD)
-
-          push_succeeded() {
-            git fetch origin "$BRANCH"
-            REMOTE_SHA=$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "none")
-            [ "$LOCAL_SHA" = "$REMOTE_SHA" ]
-          }
-
-          PUSHED=false
-          for i in 1 2 3; do
-            git push origin HEAD || true
-            if push_succeeded; then
-              echo "Push confirmed on remote."
-              PUSHED=true
-              break
-            fi
-            echo "Push attempt $i not confirmed on remote, retrying in 15s..."
-            sleep 15
-          done
-
-          if [ "$PUSHED" = false ]; then
-            echo "All push attempts failed — commit not found on remote."
-            exit 1
-          fi

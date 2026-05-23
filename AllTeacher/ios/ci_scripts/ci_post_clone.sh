@@ -12,7 +12,10 @@ echo "NPM: $(npm --version)"
 cd /Volumes/workspace/repository/AllTeacher/ios
 npm ci
 
+# Run Expo prebuild to generate native iOS files
+export PATH="/usr/local/opt/node@20/bin:$PATH"
+npx expo prebuild --platform ios --no-install
+
 # Install iOS pods
 cd ios
-export PATH="/usr/local/opt/node@20/bin:$PATH"
 pod install
