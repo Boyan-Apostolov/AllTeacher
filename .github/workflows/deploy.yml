@@ -42,7 +42,7 @@ jobs:
           EOF
 
   trigger-xcode-cloud:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment: ios
 
     steps:
@@ -53,7 +53,7 @@ jobs:
           ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
           XCODE_CLOUD_WORKFLOW_ID: ${{ secrets.XCODE_CLOUD_WORKFLOW_ID }}
         run: |
-          python3 -m pip install PyJWT cryptography requests --quiet --break-system-packages
+          python3 -m pip install PyJWT cryptography requests --quiet
           python3 - << 'EOF'
           import jwt, time, requests, sys, os
 
