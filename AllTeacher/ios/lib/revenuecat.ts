@@ -10,7 +10,7 @@
 import Purchases, { LOG_LEVEL, type PurchasesPackage } from "react-native-purchases";
 import { Platform } from "react-native";
 
-const RC_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY!;
+const RC_IOS_KEY = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY ?? "";
 
 // Product IDs must match exactly what's in App Store Connect
 const PRODUCT_IDS: Record<"starter" | "pro" | "power", string> = {
@@ -32,6 +32,10 @@ const RC_PACKAGE_IDS: Record<"starter" | "pro" | "power", string> = {
 /** Call once at app startup, before any purchase screens render. */
 export function configureRevenueCat() {
   if (Platform.OS !== "ios") return;
+  if (!RC_IOS_KEY) {
+    console.warn("[RevenueCat] EXPO_PUBLIC_REVENUECAT_IOS_KEY is not set — purchases disabled.");
+    return;
+  }
   try {
     Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
     Purchases.configure({ apiKey: RC_IOS_KEY });
