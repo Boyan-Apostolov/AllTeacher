@@ -95,6 +95,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -114,8 +115,21 @@ jobs:
           git config user.email "ci@allteacher.app"
           git config user.name "AllTeacher CI"
           git config http.postBuffer 524288000
+          git config http.lowSpeedLimit 0
+          git config http.lowSpeedTime 999
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
           git add -f ios/
           git diff --staged --quiet || git commit -m "chore: prebuild ios [skip ci]"
+          PUSHED=false
           for i in 1 2 3; do
-            git push origin HEAD && break || sleep 10
+            if git push origin HEAD; then
+              PUSHED=true
+              break
+            fi
+            echo "Push attempt $i failed, retrying in 15s..."
+            sleep 15
           done
+          if [ "$PUSHED" = false ]; then
+            echo "All push attempts failed"
+            exit 1
+          fi
