@@ -110,26 +110,40 @@ jobs:
       - name: Run Expo Prebuild
         run: CI=1 npx expo prebuild --platform ios --no-install
 
+      - name: Setup SSH for push
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
       - name: Commit ios/ folder to main
         run: |
           git config user.email "ci@allteacher.app"
           git config user.name "AllTeacher CI"
-          git config http.postBuffer 524288000
-          git config http.lowSpeedLimit 0
-          git config http.lowSpeedTime 999
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          git remote set-url origin git@github.com:${{ github.repository }}.git
           git add -f ios/
           git diff --staged --quiet || git commit -m "chore: prebuild ios [skip ci]"
+          BRANCH=$(git branch --show-current)
+          LOCAL_SHA=$(git rev-parse HEAD)
+
+          push_succeeded() {
+            git fetch origin "$BRANCH"
+            REMOTE_SHA=$(git rev-parse "origin/$BRANCH" 2>/dev/null || echo "none")
+            [ "$LOCAL_SHA" = "$REMOTE_SHA" ]
+          }
+
           PUSHED=false
           for i in 1 2 3; do
-            if git push origin HEAD; then
+            git push origin HEAD || true
+            if push_succeeded; then
+              echo "Push confirmed on remote."
               PUSHED=true
               break
             fi
-            echo "Push attempt $i failed, retrying in 15s..."
+            echo "Push attempt $i not confirmed on remote, retrying in 15s..."
             sleep 15
           done
+
           if [ "$PUSHED" = false ]; then
-            echo "All push attempts failed"
+            echo "All push attempts failed — commit not found on remote."
             exit 1
           fi
