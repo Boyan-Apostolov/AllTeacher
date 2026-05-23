@@ -115,6 +115,9 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
 
+      - name: Add GitHub to known hosts
+        run: ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+
       - name: Commit ios/ folder to main
         run: |
           git config user.email "ci@allteacher.app"
