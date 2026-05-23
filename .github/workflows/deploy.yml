@@ -126,7 +126,7 @@ jobs:
           EOF
 
   deploy-backend:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     environment: backend
 
     steps:
