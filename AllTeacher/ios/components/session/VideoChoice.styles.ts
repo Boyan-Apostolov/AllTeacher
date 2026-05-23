@@ -14,11 +14,6 @@ export const videoChoiceStyles = StyleSheet.create({
     shadowOffset: { width: 4, height: 4 },
     elevation: 4,
   },
-  webview: {
-    width: "100%",
-    height: 210,
-    backgroundColor: colors.ink,
-  },
   videoFooter: {
     backgroundColor: colors.ink,
     flexDirection: "row",
@@ -26,7 +21,6 @@ export const videoChoiceStyles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    gap: spacing.md,
   },
   videoLabel: {
     fontSize: 11,
@@ -36,9 +30,6 @@ export const videoChoiceStyles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   watchedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
     backgroundColor: colors.ok,
     paddingHorizontal: spacing.md,
     paddingVertical: 4,
@@ -73,9 +64,7 @@ export const videoChoiceStyles = StyleSheet.create({
     shadowOffset: { width: 1, height: 1 },
     transform: [{ translateX: 2 }, { translateY: 2 }],
   },
-  watchCtaIcon: {
-    fontSize: 20,
-  },
+  watchCtaIcon: { fontSize: 20 },
   watchCtaText: {
     fontSize: 15,
     fontWeight: "800",

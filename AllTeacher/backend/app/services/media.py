@@ -107,8 +107,8 @@ def youtube_search_url(query: str) -> str | None:
                 vid_id = (item.get("id") or {}).get("videoId")
                 if vid_id:
                     return (
-                        f"https://www.youtube.com/embed/{vid_id}"
-                        "?autoplay=0&rel=0&modestbranding=1"
+                        f"https://www.youtube-nocookie.com/embed/{vid_id}"
+                        "?autoplay=0&rel=0&modestbranding=1&playsinline=1"
                     )
         except Exception as exc:
             log.warning("youtube_search_url(%r, %s) failed: %s", query, duration, exc)

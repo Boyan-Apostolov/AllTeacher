@@ -6,7 +6,8 @@ Run locally:
 Run with gunicorn (prod):
     gunicorn -w 4 -b 0.0.0.0:8000 'app:create_app()'
 """
-from flask import Flask
+import httpx
+from flask import Flask, jsonify
 from flask_cors import CORS
 
 from config import Config
@@ -16,6 +17,7 @@ from app.routes.curriculum import bp as curriculum_bp
 from app.routes.session import bp as session_bp
 from app.routes.webhooks import bp as webhooks_bp
 from app.routes.admin import bp as admin_bp
+from app.routes.cards import bp as cards_bp
 from app.services import usage_meter
 
 
@@ -32,10 +34,15 @@ def create_app() -> Flask:
     app.register_blueprint(session_bp)
     app.register_blueprint(webhooks_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(cards_bp)
 
     @app.get("/")
     def index():
         return {"service": "allteacher-backend", "docs": "/health"}
+
+    @app.errorhandler(httpx.ReadError)
+    def _handle_httpx_read_error(exc):
+        return jsonify({"error": "upstream_unavailable", "detail": str(exc)}), 503
 
     @app.teardown_request
     def _flush_usage_meter(exc):

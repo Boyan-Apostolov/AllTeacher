@@ -194,7 +194,23 @@ straight to the substance.
 
 The schema requires every field. `pitfalls` may be an empty array but
 must be present. `diagram_mermaid` may be an empty string but must be
-present.\
+present.
+
+KEY TERMS — `key_terms`:
+Extract 2–5 of the most important terms, concepts, or facts from this lesson
+as spaced-repetition card pairs. Each entry must have:
+  - `front`: the term, word, formula name, or concept (ideally concise — one
+    phrase). For language lessons: the target-language word or phrase.
+    For other domains: the concept name.
+  - `back`: the definition, translation, or brief explanation in
+    `native_language_name`.
+  - `example`: optional — one short example sentence or usage. Leave empty
+    string if not applicable.
+
+Only extract things the user should actually memorise. Skip meta-concepts like
+"practice makes perfect" or "see the exercises below". If the lesson has no
+discrete terms worth flashcarding (e.g. a pure "motivation" intro), return an
+empty array.\
 """
 
 
@@ -222,10 +238,26 @@ RESPONSE_SCHEMA = {
         # Empty string when no photo adds value. Orchestrator resolves to
         # image_url via Unsplash API and stores it in content_json.
         "image_query": {"type": "string"},
+        # Spaced-repetition card pairs extracted from this lesson.
+        # Empty array when the concept has no discrete memorisable terms.
+        "key_terms": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "front":   {"type": "string"},
+                    "back":    {"type": "string"},
+                    "example": {"type": "string"},
+                },
+                "required": ["front", "back", "example"],
+                "additionalProperties": False,
+            },
+            "maxItems": 5,
+        },
     },
     "required": [
         "concept_title", "intro", "key_points", "example",
-        "pitfalls", "next_up", "diagram_mermaid", "image_query",
+        "pitfalls", "next_up", "diagram_mermaid", "image_query", "key_terms",
     ],
     "additionalProperties": False,
 }

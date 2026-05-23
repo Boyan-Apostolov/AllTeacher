@@ -16,7 +16,7 @@ export const TAB_BAR_CONTENT_HEIGHT = 60; // px, excluding safe-area bottom
 const BASE_TABS = [
   { label: "Home",     emoji: "🏠", route: "/" },
   { label: "Progress", emoji: "📈", route: "/progress" },
-  { label: "Vocab",    emoji: "📖", route: "/vocabulary" },
+  { label: "Library",  emoji: "🗂️", route: "/vocabulary" },
   { label: "Plans",    emoji: "✦",  route: "/subscription" },
 ] as const;
 
