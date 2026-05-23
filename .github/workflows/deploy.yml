@@ -146,6 +146,9 @@ jobs:
         run: docker build -t ${{ secrets.DOCKER_USERNAME }}/allteacher-backend ././AllTeacher/backend
 
       - name: Push Docker image
+        env:
+          NO_PROXY: "docker.io,registry-1.docker.io,index.docker.io"
+          no_proxy: "docker.io,registry-1.docker.io,index.docker.io"
         run: docker push ${{ secrets.DOCKER_USERNAME }}/allteacher-backend
 
       - name: Deploy to server
