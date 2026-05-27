@@ -261,6 +261,14 @@ export default function AdminScreen() {
           {diagMeErr ? (
             <Text style={{ fontSize: 12, color: colors.warn }}>{diagMeErr}</Text>
           ) : null}
+
+          {/* Logs shortcut — sits inside the diagnostics card */}
+          <Pressable
+            style={styles.logsBtn}
+            onPress={() => router.push("/admin-logs")}
+          >
+            <Text style={styles.logsBtnText}>View request logs →</Text>
+          </Pressable>
         </View>
 
         {error ? <MessageBox variant="error" message={error} /> : null}
@@ -789,6 +797,25 @@ const styles = StyleSheet.create({
     color: colors.ink,
     textTransform: "uppercase",
     letterSpacing: 0.8,
+  },
+  logsBtn: {
+    alignSelf: "flex-start",
+    borderWidth: 2,
+    borderColor: colors.ink,
+    borderRadius: 10,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.bg,
+    shadowColor: colors.ink,
+    shadowOpacity: 1,
+    shadowRadius: 0,
+    shadowOffset: { width: 2, height: 2 },
+    elevation: 2,
+  },
+  logsBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.ink,
   },
   subtleHint: {
     fontSize: 12,

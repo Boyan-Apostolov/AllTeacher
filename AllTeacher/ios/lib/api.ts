@@ -411,6 +411,41 @@ export type AdminProfitMonth = {
 
 export type AdminProfit = { months: AdminProfitMonth[] };
 
+export type RequestLog = {
+  id: string;
+  request_id: string | null;
+  user_id: string | null;
+  user_email: string | null;
+  method: string;
+  path: string;
+  endpoint: string | null;
+  status_code: number | null;
+  duration_ms: number | null;
+  error: string | null;
+  created_at: string;
+};
+
+export type AdminLogsResponse = {
+  logs: RequestLog[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+
+export type EndpointStat = {
+  method: string;
+  path: string;
+  count: number;
+  error_count: number;
+  avg_ms: number;
+  max_ms: number;
+};
+
+export type AdminLogStatsResponse = {
+  stats: EndpointStat[];
+  sample_size: number;
+};
+
 // --- Subscription / tier (no payments yet — admin-grant only) -----------
 
 export type Tier = "free" | "starter" | "pro" | "power";
@@ -790,6 +825,25 @@ export const api = {
       method: "POST",
       headers: { ...authHeaders(token), "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: userId }),
+    }),
+
+  adminLogs: (
+    token: string,
+    params: { limit?: number; offset?: number; path?: string } = {},
+  ) => {
+    const qs = new URLSearchParams();
+    if (params.limit != null) qs.set("limit", String(params.limit));
+    if (params.offset != null) qs.set("offset", String(params.offset));
+    if (params.path) qs.set("path", params.path);
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return request<AdminLogsResponse>(`/admin/logs${suffix}`, {
+      headers: authHeaders(token),
+    });
+  },
+
+  adminLogStats: (token: string) =>
+    request<AdminLogStatsResponse>("/admin/logs/stats", {
+      headers: authHeaders(token),
     }),
 
   // --- /me/subscription — what plan does THE CURRENT USER have? Used by

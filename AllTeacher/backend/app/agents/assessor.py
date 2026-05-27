@@ -21,7 +21,8 @@ from __future__ import annotations
 import json
 from typing import Any, Literal, TypedDict
 
-from openai import OpenAI
+from app.utils.posthog_client import get_openai_client
+from app.utils.retry import retry_openai
 
 from config import Config
 from app.services import usage_meter
@@ -107,12 +108,11 @@ RESPONSE_SCHEMA = {
 
 # --- client ---
 
-def _client() -> OpenAI:
-    if not Config.OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not configured")
-    return OpenAI(api_key=Config.OPENAI_API_KEY)
+def _client():
+    return get_openai_client()
 
 
+@retry_openai
 def step(
     *,
     goal: str,

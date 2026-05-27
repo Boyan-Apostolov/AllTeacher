@@ -1,16 +1,18 @@
 """Flask app factory + entrypoint.
 
 Run locally:
-    python app.py
+    python main.py
 
 Run with gunicorn (prod):
-    gunicorn -w 4 -b 0.0.0.0:8000 'app:create_app()'
+    gunicorn -w 4 -b 0.0.0.0:8000 'main:create_app()'
 """
 import httpx
 from flask import Flask, jsonify
 from flask_cors import CORS
 
 from config import Config
+from app.utils.logger import configure_logging
+from app.middleware.request_logging import register_request_logging
 from app.routes.health import bp as health_bp
 from app.routes.auth import bp as auth_bp
 from app.routes.curriculum import bp as curriculum_bp
@@ -20,6 +22,10 @@ from app.routes.admin import bp as admin_bp
 from app.routes.cards import bp as cards_bp
 from app.services import usage_meter
 
+# Configure structured logging as early as possible so any import-time
+# log calls are formatted correctly.
+configure_logging(env=Config.FLASK_ENV)
+
 
 def create_app() -> Flask:
     app = Flask(__name__)
@@ -27,6 +33,10 @@ def create_app() -> Flask:
 
     # Expo dev on LAN hits the backend cross-origin
     CORS(app, resources={r"/*": {"origins": "*"}})
+
+    # Per-request logging: request_id, latency, PostHog events, request_logs table.
+    # Must be registered before blueprints so before_request fires first.
+    register_request_logging(app)
 
     app.register_blueprint(health_bp)
     app.register_blueprint(auth_bp)

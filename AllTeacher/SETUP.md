@@ -826,3 +826,57 @@ No new npm dependencies needed.
 1. Run `013_knowledge_cards.sql` in Supabase SQL Editor.
 2. Restart the backend (`python app.py`).
 3. Cards will appear automatically once you complete flashcard exercises.
+
+---
+
+### Logging, Observability & Fault Tolerance (2026-05-27)
+
+Full observability stack added to the backend. Three complementary layers: PostHog (product analytics + LLM traces), Supabase `request_logs` table (queryable HTTP logs), and structured Python logging (stdout for ops).
+
+**New files:**
+- `backend/app/utils/__init__.py` — new utils package
+- `backend/app/utils/logger.py` — structured logging setup. Human-readable in dev, JSON lines in production. Call `configure_logging(env=...)` once at startup. Every module uses `logging.getLogger(__name__)`.
+- `backend/app/utils/retry.py` — `@retry_openai` decorator. Catches `RateLimitError`, `APIConnectionError`, `APITimeoutError`. Exponential backoff: 1 s → 2 s → 4 s, max 3 retries. Logs each retry attempt.
+- `backend/app/utils/posthog_client.py` — singleton PostHog client (`get_ph_client()`) and PostHog-wrapped OpenAI client (`get_openai_client()`). If `POSTHOG_API_KEY` is not set, a no-op stub is used so the app runs fine without PostHog.
+- `backend/app/middleware/request_logging.py` — Flask hooks: `before_request` generates a `request_id` UUID and records start time; `after_request` logs method/path/status/duration to Python logger + PostHog `api_request` event + `request_logs` table; `teardown_request` logs unhandled exceptions to all three sinks.
+
+**Modified files:**
+- `backend/main.py` — calls `configure_logging()` at import time; calls `register_request_logging(app)` in `create_app()`.
+- `backend/config.py` — added `POSTHOG_API_KEY` and `POSTHOG_HOST` settings.
+- `backend/requirements.txt` — added `posthog>=3.5.0`.
+- All agent files (`assessor`, `planner`, `explainer`, `adapter`, `exercise_writer`, `evaluator`) — replaced local `OpenAI(api_key=...)` with `get_openai_client()` (PostHog-wrapped), and decorated each public callable with `@retry_openai`.
+
+**DB migration** `015_request_logs.sql` — run in Supabase SQL Editor:
+- `public.request_logs` table: `request_id`, `user_id`, `method`, `path`, `endpoint`, `status_code`, `duration_ms`, `error`, `created_at`.
+- Indexes on `created_at DESC`, `user_id`, `request_id`.
+- RLS: service role inserts; admins read all; users read their own rows.
+
+**New `.env` variables (backend):**
+```
+POSTHOG_API_KEY=phc_…          # from PostHog project settings
+POSTHOG_HOST=https://eu.i.posthog.com   # or https://us.i.posthog.com
+```
+
+**User action required:**
+1. Run `015_request_logs.sql` in Supabase SQL Editor.
+2. Add `POSTHOG_API_KEY` and `POSTHOG_HOST` to `backend/.env` (leave blank to disable PostHog — app works either way).
+3. `pip install -r requirements.txt` to pick up the `posthog` package.
+4. Restart the backend.
+
+**What you get in PostHog:**
+- LLM Observability dashboard: every agent call with model, tokens, latency, cost — automatically, via the OpenAI wrapper.
+- `api_request` event per HTTP request with method, path, status, duration_ms.
+- `api_error` event for any unhandled 500.
+- All events tied to `user_id` as the PostHog `distinct_id`.
+
+### Admin — Request Logs page (2026-05-27)
+
+The admin screen now includes a **"View request logs →"** button (inside the System diagnostics card) that navigates to a dedicated logs viewer.
+
+**New files:**
+- `ios/app/admin-logs.tsx` — paginated list of recent HTTP requests. Each row shows: timestamp, HTTP method badge (coloured), path, status code (green 2xx / red 4xx–5xx), response time in ms, and the error string when present. Pull-to-refresh and "Load more" pagination (50 rows per page).
+
+**Modified files:**
+- `backend/app/routes/admin.py` — added `GET /admin/logs` endpoint. Returns `request_logs` rows sorted by `created_at DESC`, with `?limit`, `?offset`, `?path` query params.
+- `ios/lib/api.ts` — added `RequestLog` type, `AdminLogsResponse` type, and `api.adminLogs()` function.
+- `ios/app/admin.tsx` — added "View request logs →" button inside the System diagnostics card.

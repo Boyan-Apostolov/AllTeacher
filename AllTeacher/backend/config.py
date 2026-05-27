@@ -26,6 +26,12 @@ class Config:
 
     REVENUECAT_WEBHOOK_SECRET = os.getenv("REVENUECAT_WEBHOOK_SECRET", "")
 
+    # PostHog — product analytics + LLM observability.
+    # Leave POSTHOG_API_KEY empty to disable PostHog entirely (local dev is fine without it).
+    # Host: use https://eu.i.posthog.com (EU cloud) or https://us.i.posthog.com (US cloud).
+    POSTHOG_API_KEY = os.getenv("POSTHOG_API_KEY", "")
+    POSTHOG_HOST    = os.getenv("POSTHOG_HOST", "https://eu.i.posthog.com")
+
     # Third-party media APIs — optional. If not set, the orchestrator
     # silently skips video_choice generation and image decoration.
     YOUTUBE_API_KEY  = os.getenv("YOUTUBE_API_KEY", "")
