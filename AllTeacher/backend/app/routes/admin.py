@@ -36,6 +36,7 @@ All time-window query params accept `?days=N` (default 30, capped at
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -540,6 +541,156 @@ def profit():
             "margin_cents": round(rev - cost, 4),
         })
     return jsonify({"months": out})
+
+
+# --- /admin/logs ------------------------------------------------------
+
+@bp.get("/logs")
+@require_auth
+@admin_only
+def request_logs():
+    """Paginated HTTP request log from the request_logs table.
+
+    Query params:
+      ?limit=N    (default 50, max 200)
+      ?offset=N   (default 0)
+      ?path=str   (optional prefix filter, e.g. /curriculum)
+    """
+    db = _db()
+
+    raw_limit = request.args.get("limit", 50)
+    raw_offset = request.args.get("offset", 0)
+    path_filter = (request.args.get("path") or "").strip()
+
+    try:
+        limit = max(1, min(200, int(raw_limit)))
+    except (TypeError, ValueError):
+        limit = 50
+    try:
+        offset = max(0, int(raw_offset))
+    except (TypeError, ValueError):
+        offset = 0
+
+    q = (
+        db.table("request_logs")
+        .select(
+            "id,request_id,user_id,method,path,endpoint,"
+            "status_code,duration_ms,error,created_at"
+        )
+        .order("created_at", desc=True)
+        .range(offset, offset + limit - 1)
+    )
+    if path_filter:
+        q = q.ilike("path", f"{path_filter}%")
+
+    rows = q.execute().data or []
+
+    # Resolve user_id → email in one batch query against the public users table.
+    user_ids = list({r["user_id"] for r in rows if r.get("user_id")})
+    email_by_id: dict[str, str] = {}
+    if user_ids:
+        try:
+            u_rows = (
+                db.table("users")
+                .select("id,email")
+                .in_("id", user_ids)
+                .execute()
+            ).data or []
+            email_by_id = {u["id"]: u.get("email") or "" for u in u_rows}
+        except Exception:
+            pass  # email resolution is best-effort
+    for r in rows:
+        r["user_email"] = email_by_id.get(r.get("user_id") or "", None)
+
+    # Total count (approximate — separate lightweight query).
+    count_q = db.table("request_logs").select("id", count="exact")
+    if path_filter:
+        count_q = count_q.ilike("path", f"{path_filter}%")
+    total = (count_q.execute()).count or 0
+
+    return jsonify({
+        "logs": rows,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@bp.get("/logs/stats")
+@require_auth
+@admin_only
+def request_logs_stats():
+    """Aggregated per-endpoint stats for the slowest-paths chart.
+
+    Scans up to the most recent `sample` rows (default 2000, max 10000)
+    and aggregates in Python: avg duration, max duration, call count, and
+    error count per (method, path) pair. Returns the top 15 by avg_ms.
+
+    Query params:
+      ?sample=N   (default 2000, max 10000)
+    """
+    db = _db()
+
+    try:
+        sample = max(100, min(10000, int(request.args.get("sample") or 2000)))
+    except (TypeError, ValueError):
+        sample = 2000
+
+    rows = (
+        db.table("request_logs")
+        .select("method,path,duration_ms,error,status_code")
+        .order("created_at", desc=True)
+        .limit(sample)
+        .execute()
+    ).data or []
+
+    # Normalise paths before aggregation: replace UUID segments with :id so
+    # that e.g. /curriculum/22fde0e2-bef8-487a/plan and
+    #            /curriculum/81d2e045-3398-4c92/plan
+    # both roll up to /curriculum/:id/plan rather than appearing as two rows.
+    _UUID_RE = re.compile(
+        r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+        re.IGNORECASE,
+    )
+
+    def _normalise(path: str) -> str:
+        return _UUID_RE.sub(":id", path)
+
+    # Aggregate per (method, normalised_path).
+    agg: dict[tuple[str, str], dict[str, Any]] = {}
+    for r in rows:
+        key = (str(r.get("method") or "?"), _normalise(str(r.get("path") or "/")))
+        entry = agg.setdefault(key, {
+            "method": key[0],
+            "path": key[1],
+            "count": 0,
+            "error_count": 0,
+            "total_ms": 0,
+            "max_ms": 0,
+        })
+        entry["count"] += 1
+        if r.get("error") or (r.get("status_code") or 0) >= 400:
+            entry["error_count"] += 1
+        ms = int(r.get("duration_ms") or 0)
+        entry["total_ms"] += ms
+        if ms > entry["max_ms"]:
+            entry["max_ms"] = ms
+
+    stats = []
+    for entry in agg.values():
+        cnt = entry["count"]
+        stats.append({
+            "method": entry["method"],
+            "path": entry["path"],
+            "count": cnt,
+            "error_count": entry["error_count"],
+            "avg_ms": round(entry["total_ms"] / cnt) if cnt else 0,
+            "max_ms": entry["max_ms"],
+        })
+
+    # Sort by avg_ms descending, return top 15.
+    stats.sort(key=lambda x: x["avg_ms"], reverse=True)
+    return jsonify({"stats": stats[:15], "sample_size": len(rows)})
 
 
 # --- /admin/subscriptions/{grant,revoke} -----------------------------

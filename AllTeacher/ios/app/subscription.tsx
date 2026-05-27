@@ -340,6 +340,12 @@ export default function SubscriptionScreen() {
   const handleContactSupport = () =>
     Linking.openURL("mailto:support@allteacher.app");
 
+  const handlePrivacyPolicy = () =>
+    Linking.openURL("https://allteacher.boyan-apostolov.live/privacy.html");
+
+  const handleTermsOfUse = () =>
+    Linking.openURL("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/");
+
   return (
     <ScreenContainer>
       <Stack.Screen options={{ headerShown: false }} />
@@ -466,6 +472,12 @@ export default function SubscriptionScreen() {
 
         {/* ── Bottom links ── */}
         <View style={styles.linkRow}>
+          <Pressable style={styles.linkBtn} onPress={handlePrivacyPolicy}>
+            <Text style={styles.linkText}>Privacy Policy</Text>
+          </Pressable>
+          <Pressable style={styles.linkBtn} onPress={handleTermsOfUse}>
+            <Text style={styles.linkText}>Terms of Use</Text>
+          </Pressable>
           <Pressable style={styles.linkBtn} onPress={handleRestorePurchases}>
             <Text style={styles.linkText}>Restore purchases</Text>
           </Pressable>
