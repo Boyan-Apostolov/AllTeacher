@@ -33,20 +33,42 @@
 create extension if not exists pgcrypto;
 
 -- 1. subscriptions ---------------------------------------------------------
+-- The base table is created in 001_initial_schema.sql.
+-- Here we add the billing-specific columns if they don't exist yet.
 
-create table if not exists public.subscriptions (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  tier text not null default 'free'
-    check (tier in ('free','pro','power')),
-  monthly_price_cents int not null default 0,
-  currency text not null default 'EUR',
-  started_at timestamptz not null default now(),
-  current_period_end timestamptz,
-  revenuecat_id text,
-  status text not null default 'active'
-    check (status in ('active','canceled','expired','grace','paused')),
-  updated_at timestamptz not null default now()
-);
+do $$ begin
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='subscriptions'
+                 and column_name='status') then
+    alter table public.subscriptions
+      add column status text not null default 'active'
+        check (status in ('active','canceled','expired','grace','paused'));
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='subscriptions'
+                 and column_name='current_period_end') then
+    alter table public.subscriptions
+      add column current_period_end timestamptz;
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='subscriptions'
+                 and column_name='monthly_price_cents') then
+    alter table public.subscriptions
+      add column monthly_price_cents int not null default 0;
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='subscriptions'
+                 and column_name='currency') then
+    alter table public.subscriptions
+      add column currency text not null default 'EUR';
+  end if;
+  if not exists (select 1 from information_schema.columns
+                 where table_schema='public' and table_name='subscriptions'
+                 and column_name='started_at') then
+    alter table public.subscriptions
+      add column started_at timestamptz not null default now();
+  end if;
+end $$;
 
 -- Quick "how many active paying subs?" lookups + tier breakdowns.
 create index if not exists subscriptions_tier_status_idx

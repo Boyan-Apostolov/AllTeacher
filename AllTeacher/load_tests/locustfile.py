@@ -8,10 +8,10 @@ Prerequisites
 Run (headless, 10 users, 60 s):
     locust -f load_tests/locustfile.py --headless \
         -u 10 -r 2 --run-time 60s \
-        --host http://localhost:5000
+        --host http://localhost:5001
 
 Run (web UI at http://localhost:8089):
-    locust -f load_tests/locustfile.py --host http://localhost:5000
+    locust -f load_tests/locustfile.py --host http://localhost:5001
 
 Environment variables (override defaults):
     LOAD_TEST_SECRET   Bearer token accepted by the auth bypass (default: loadtest)
@@ -19,10 +19,10 @@ Environment variables (override defaults):
 """
 from __future__ import annotations
 
+import itertools
 import json
 import os
 import random
-import string
 import time
 
 from locust import HttpUser, between, task
@@ -31,6 +31,35 @@ from locust import HttpUser, between, task
 
 _SECRET = os.getenv("LOAD_TEST_SECRET", "loadtest")
 _TIER   = os.getenv("LOAD_TEST_TIER", "pro")
+
+# Fixed UUIDs matching load_tests/seed_load_test_users.sql.
+# When running against a real Supabase these users must be pre-seeded;
+# in STUB_DB mode any UUID works fine.
+LOAD_TEST_UIDS = [
+    ("0",  "d8fb3abf-7224-83dd-2b22-9be346476db2"),
+    ("1",  "1440bef5-4d9c-5fdf-accc-9306d3c5c4f9"),
+    ("2",  "2c09a2e4-fd4c-704e-fdf3-9eb584ca5cdc"),
+    ("3",  "fcc2e87e-5740-f53f-9494-1c0d27a55291"),
+    ("4",  "00ebbeb7-232b-dac1-2675-81a76b3306c0"),
+    ("5",  "9d4daa4c-81ee-bb7c-ab68-3793447f9f76"),
+    ("6",  "4c5209d5-f81f-fadc-4a55-c9c60dac21e0"),
+    ("7",  "b54184b1-8dcf-e221-e9f9-cd758451c52f"),
+    ("8",  "63c42f40-ec33-89c7-ae1f-98f2bd83d220"),
+    ("9",  "d30d6887-6d79-995e-6a4b-d2baaed6dfa4"),
+    ("10", "21c23813-d5dd-6e5e-323c-3f26bc01b1d7"),
+    ("11", "4f420ac2-6a81-6f23-100d-def4c73265fe"),
+    ("12", "4cc409c1-7571-4536-d32b-aa2fd66bec86"),
+    ("13", "661977f0-7152-c230-a7fb-1bddf202da15"),
+    ("14", "5aa914c4-ba15-0e24-9a00-8c1976a41cd8"),
+    ("15", "1aa1b94c-c06b-9a2a-a28c-723090017a13"),
+    ("16", "7af95937-1e0a-b9b4-3969-cc23153237ea"),
+    ("17", "197df305-7343-93fa-a23d-b634aecbc363"),
+    ("18", "32e10a3c-bd84-acbd-fbb7-288d51b33f98"),
+    ("19", "0c88965d-9de4-532a-35f1-74213e9c5d82"),
+]
+
+# Round-robin counter shared across all spawned users.
+_uid_cycle = itertools.cycle(range(len(LOAD_TEST_UIDS)))
 
 _GOALS = [
     "Learn conversational French",
@@ -46,10 +75,6 @@ _NATIVE_LANGUAGES = ["en", "bg", "de", "es", "fr", "it", "pt"]
 
 
 # ── helpers ────────────────────────────────────────────────────────────────────
-
-def _rand_str(n: int = 6) -> str:
-    return "".join(random.choices(string.ascii_lowercase, k=n))
-
 
 class _API:
     """Thin request wrapper that adds auth headers and logs failures."""
@@ -134,9 +159,10 @@ class AllTeacherUser(HttpUser):
     wait_time = between(1, 5)
 
     def on_start(self):
-        """Called once per simulated user. Set up a unique worker identity."""
-        self._worker_id = _rand_str()
-        self._api = _API(self.client, self._worker_id)
+        """Called once per simulated user. Assign a slot from the fixed pool."""
+        slot = next(_uid_cycle)
+        self._worker_index, self._worker_uuid = LOAD_TEST_UIDS[slot]
+        self._api = _API(self.client, self._worker_index)
         self._curriculum_id: str | None = None
         self._week_id: str | None = None
         self._exercise_id: str | None = None
@@ -269,8 +295,9 @@ class ReadOnlyUser(HttpUser):
     weight = 3  # 3× more read-only users than full-journey users
 
     def on_start(self):
-        self._worker_id = _rand_str()
-        self._api = _API(self.client, self._worker_id)
+        slot = next(_uid_cycle)
+        worker_index, _ = LOAD_TEST_UIDS[slot]
+        self._api = _API(self.client, worker_index)
 
     @task(5)
     def list_curricula(self):
