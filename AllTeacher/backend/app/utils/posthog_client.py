@@ -24,8 +24,11 @@ local dev.
 from __future__ import annotations
 
 import logging
+import os
 
 from config import Config
+
+_STUB_AGENTS: bool = os.getenv("STUB_AGENTS", "").lower() in ("1", "true", "yes")
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +72,9 @@ _openai_client = None
 def get_openai_client():
     """Return a fresh OpenAI client per call, wrapped with PostHog if available.
 
+    When STUB_AGENTS=true a lightweight stub is returned instead so load
+    tests and smoke tests run without any real OpenAI API calls.
+
     We intentionally do NOT cache a singleton here. The OpenAI SDK manages
     an internal httpx connection pool, and a streaming response that is
     abandoned mid-flight (e.g. the iOS client disconnects) can leave a
@@ -87,6 +93,10 @@ def get_openai_client():
     to PostHog's background queue, and returns the real response unchanged.
     If wrap_openai is unavailable the plain client is returned as-is.
     """
+    if _STUB_AGENTS:
+        from app.utils.stub_openai import StubOpenAIClient  # noqa: PLC0415
+        return StubOpenAIClient()
+
     import httpx  # noqa: PLC0415
     from openai import OpenAI  # noqa: PLC0415
     if not Config.OPENAI_API_KEY:

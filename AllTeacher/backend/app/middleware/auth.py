@@ -7,6 +7,13 @@ Handles BOTH signing modes Supabase offers:
 Auto-detects the algorithm from the token header. If you see "unsupported_alg"
 in the error response, your project is using a scheme we don't know about.
 
+Load-test bypass
+----------------
+If LOAD_TEST_SECRET is set in the environment, a Bearer token of exactly that
+value is accepted without any Supabase call. g.user_id is set to a
+deterministic UUID derived from the token so concurrent workers don't
+collide on the same row. Never set this in production.
+
 Usage:
     @bp.route("/me")
     @require_auth
@@ -14,6 +21,8 @@ Usage:
         user_id = g.user_id
         ...
 """
+import hashlib
+import os
 from functools import wraps
 from datetime import datetime, timezone
 
@@ -24,6 +33,9 @@ from flask import request, jsonify, g
 from config import Config
 from app.services import usage_meter
 from app.db.supabase import service_client
+
+# Cached at import time — zero per-request overhead.
+_LOAD_TEST_SECRET: str | None = os.getenv("LOAD_TEST_SECRET") or None
 
 
 _jwks_client: PyJWKClient | None = None
@@ -47,6 +59,25 @@ def require_auth(fn):
         if not auth.startswith("Bearer "):
             return jsonify({"error": "missing_bearer_token"}), 401
         token = auth.removeprefix("Bearer ").strip()
+
+        # ── Load-test fast path ──────────────────────────────────────────
+        if _LOAD_TEST_SECRET and token == _LOAD_TEST_SECRET:
+            # Derive a stable UUID from the worker index embedded in the
+            # X-Load-Test-User header, falling back to a fixed sentinel.
+            worker_hint = request.headers.get("X-Load-Test-User", "0")
+            fake_id = hashlib.md5(
+                f"lt-{worker_hint}".encode(), usedforsecurity=False
+            ).hexdigest()
+            # Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+            g.user_id = (
+                f"{fake_id[:8]}-{fake_id[8:12]}-{fake_id[12:16]}"
+                f"-{fake_id[16:20]}-{fake_id[20:32]}"
+            )
+            g.user_email = f"loadtest-{worker_hint}@example.com"
+            g.jwt_payload = {"sub": g.user_id, "load_test": True}
+            g.user_tier = request.headers.get("X-Load-Test-Tier", "pro")
+            return fn(*args, **kwargs)
+        # ────────────────────────────────────────────────────────────────
 
         # Peek at the header to decide verification strategy.
         try:
