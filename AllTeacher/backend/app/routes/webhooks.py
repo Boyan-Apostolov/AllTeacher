@@ -134,8 +134,15 @@ def revenuecat():
     payload    = request.get_json(silent=True) or {}
     event      = payload.get("event", {})
     event_type = event.get("type", "UNKNOWN")
+    environment = event.get("environment", "PRODUCTION")
 
-    log.info("webhooks/revenuecat: received event_type=%s", event_type)
+    log.info("webhooks/revenuecat: received event_type=%s environment=%s", event_type, environment)
+
+    # Reject sandbox events in production to prevent free sandbox purchases
+    # from activating paid tiers on real accounts.
+    if environment == "SANDBOX" and not Config.DEBUG:
+        log.warning("webhooks/revenuecat: ignoring SANDBOX event in production")
+        return jsonify({"received": True, "skipped": "sandbox_event"}), 200
 
     # ── Extract fields from the event ─────────────────────────────────────────
     user_id    = event.get("app_user_id")   # Supabase UUID (set via RC logIn)

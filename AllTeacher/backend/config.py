@@ -7,6 +7,7 @@ load_dotenv()
 
 class Config:
     FLASK_ENV = os.getenv("FLASK_ENV", "development")
+    DEBUG = FLASK_ENV == "development"
     PORT = int(os.getenv("PORT", "8000"))
 
     SUPABASE_URL = os.getenv("SUPABASE_URL", "")
