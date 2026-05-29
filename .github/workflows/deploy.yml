@@ -147,7 +147,6 @@ jobs:
 
   deploy-backend:
     runs-on: self-hosted
-    environment: backend
     needs: push-backend
 
     steps:
@@ -165,4 +164,3 @@ jobs:
               --env-file /root/allteacher/.env \
               bobby156/allteacher-backend:latest
           EOF
-
